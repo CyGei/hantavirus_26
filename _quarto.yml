@@ -1,0 +1,7 @@
+project:
+  type: default
+  output-dir: output
+
+knitr:
+  opts_chunk:
+    comment: ""

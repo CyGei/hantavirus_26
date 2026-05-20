@@ -1,0 +1,19 @@
+# Quarto cache and intermediates
+report_cache/
+report_files/
+.quarto/
+*.knit.md
+
+# Rendered outputs (regenerated on render)
+output/
+
+# Downloaded sequence data (fetched at render time)
+Hondius_hantavirus_h2026/data/sequences/matched_andv_s_alignment.fasta
+
+# macOS
+.DS_Store
+
+# R session
+.Rhistory
+.RData
+.Rproj.user/

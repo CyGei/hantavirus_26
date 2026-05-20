@@ -1,0 +1,529 @@
+---
+title: "Andes Virus Outbreak"
+subtitle: "MV Hondius Cruise Ship · 2026"
+date: today
+date-format: "D MMMM YYYY"
+format:
+  pdf:
+    documentclass: article
+    geometry: "margin=2.5cm"
+    fontsize: 11pt
+    toc: true
+    fig-width: 7
+    fig-height: 4.5
+    keep-tex: false
+  html:
+    theme: cosmo
+    toc: true
+    embed-resources: true
+    fig-width: 9
+    fig-height: 5
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{bash}
+#| include: false
+git -C Hondius_hantavirus_h2026 pull
+```
+
+```{r setup}
+#| include: false
+library(tidyverse)
+library(outbreaker2)
+library(ape)
+library(epitrix)
+library(distcrete)
+library(epicontacts)
+library(visNetwork)
+library(tidygraph)
+library(ggraph)
+library(gt)
+library(o2ools)
+library(httr2)
+library(scales)
+library(ggridges)
+library(coda)
+library(furrr)
+library(future)
+
+group_pal <- c(passenger = "#1f77b4", crew = "#d62728")
+```
+
+```{r linelist}
+#| include: false
+linelist <- read_csv(
+  "Hondius_hantavirus_h2026/data/linelist/2026_hantavirus.csv",
+  col_types = cols(
+    Gh_ID = col_character(),
+    symptom_onset = col_date(),
+    outcome_date = col_date(),
+    ship_boarded = col_date(),
+    left_ship = col_date(),
+    confirmation_date = col_date()
+  )
+) |>
+  filter(status %in% c("confirmed", "probable")) |>
+  arrange(symptom_onset) |>
+  mutate(
+    group = case_when(
+      passenger..y.n. == "y" ~ "passenger",
+      cruise.crew..y.n. == "y" ~ "crew"
+    ) |>
+      factor(levels = c("passenger", "crew")),
+    dates = as.integer(symptom_onset - min(symptom_onset, na.rm = TRUE))
+  )
+```
+
+```{r sequences}
+#| include: false
+acc_ids <- linelist |>
+  filter(!is.na(accession_id)) |>
+  pull(accession_id) |>
+  str_trim()
+
+fasta <- "Hondius_hantavirus_h2026/data/sequences/matched_andv_s_alignment.fasta"
+
+request(
+  "https://lapis.pathoplexus.org/andv/sample/alignedNucleotideSequences/L"
+) |>
+  req_body_json(list(accessionVersion = as.list(acc_ids))) |>
+  req_method("POST") |>
+  req_perform() |>
+  resp_body_raw() |>
+  writeBin(fasta)
+
+dna <- read.FASTA(fasta)
+names(dna) <- linelist$Gh_ID[match(names(dna), str_trim(linelist$accession_id))]
+dna <- dna[!is.na(names(dna))]
+```
+
+```{r analysis}
+#| cache: true
+#| include: false
+params <- gamma_mucv2shapescale(mu = 18, cv = 6 / 18)
+si <- distcrete("gamma", 1, shape = params$shape, scale = params$scale)$d(1:50)
+
+o2_data <- outbreaker_data(
+  ids = linelist$Gh_ID,
+  dates = linelist$dates,
+  dna = dna,
+  w_dens = si
+)
+
+config <- create_config(
+  n_iter = 1e5,
+  sample_every = 50,
+  max_kappa = 5,
+  move_kappa = TRUE,
+  init_pi = 0.9,
+  move_pi = TRUE,
+  find_import = TRUE,
+  n_iter_import = 1e4,
+  outlier_threshold = 2.5 #default is 5, lower = more aggressive outlier detection
+)
+
+# Run 4 independent chains in parallel, each with a distinct seed
+plan(multisession, workers = 4)
+
+o2_chains <- future_map(
+  c(123L, 456L, 789L, 1011L),
+  \(s) {
+    set.seed(s)
+    outbreaker(data = o2_data, config = config) |> filter(step > 10000)
+  },
+  .options = furrr_options(seed = NULL)
+)
+
+plan(sequential)
+
+# Pool all chains; .id = "chain" records which chain each row came from
+o2 <- bind_rows(o2_chains, .id = "chain")
+o2_id <- identify(o2, ids = linelist$Gh_ID)
+entropy_vals <- get_entropy(o2_id)
+consensus_tree <- get_consensus(o2_id)
+```
+
+::: {.callout-note appearance="minimal"}
+**Outbreak summary** · `r format(Sys.Date(), "%d %B %Y")`
+
+`r nrow(linelist)` cases in analysis (`r sum(linelist$status == "confirmed")` confirmed · `r sum(linelist$status == "probable")` probable) · `r sum(!is.na(linelist$outcome) & linelist$outcome == "died")` deaths · `r format(min(linelist$symptom_onset, na.rm=TRUE), "%d %b")` – `r format(max(linelist$symptom_onset, na.rm=TRUE), "%d %b %Y")`
+:::
+
+## Background
+
+Andes virus (ANDV) is the only hantavirus documented to transmit person-to-person, in addition to the usual rodent-to-human route. The 2026 outbreak is linked to the **MV Hondius** expedition cruise ship. Cases first appeared in early April 2026; by the time infection was confirmed, passengers and crew had dispersed across Europe, Asia, and the Americas. S-segment whole-genome sequencing confirms ANDV as the causative agent.
+
+## Methods
+
+Transmission trees were inferred with **outbreaker2**, integrating symptom onset dates and pairwise S-segment genetic distances. Serial interval was modelled as Gamma(mean = 18 d, CV = 1/3). MCMC: 100,000 iterations, thinned every 50 steps, 10% burn-in. L-segment sequences were retrieved from [Pathoplexus](https://pathoplexus.org) for the `r length(dna)` of `r nrow(linelist)` cases with deposited accessions. The S and M segments are identical across all cases; the L segment carries the only two SNPs observed in the outbreak and is therefore the sole source of genetic signal. Remaining cases contribute temporal data only.
+
+## Results
+
+### Cases
+
+```{r case-table}
+#| tbl-cap: "Confirmed and probable cases."
+linelist |>
+  transmute(
+    `Case ID` = Gh_ID,
+    Status = str_to_title(status),
+    Role = str_to_title(as.character(group)),
+    `Age (yr)` = as.character(age),
+    Sex = str_to_title(sex),
+    Nationality = str_to_title(nationality),
+    `Onset date` = if_else(
+      !is.na(symptom_onset),
+      format(symptom_onset, "%d %b %Y"),
+      "—"
+    ),
+    Outcome = case_when(
+      outcome == "died" ~ "Fatal",
+      !is.na(outcome) ~ str_to_title(outcome),
+      TRUE ~ "—"
+    ),
+    Sequence = if_else(!is.na(accession_id), str_trim(accession_id), "—")
+  ) |>
+  gt() |>
+  tab_style(
+    style = cell_text(weight = "bold", color = "#c0392b"),
+    locations = cells_body(rows = Outcome == "Fatal", columns = Outcome)
+  ) |>
+  tab_style(
+    style = list(
+      cell_fill(color = "#2c3e50"),
+      cell_text(color = "white", weight = "bold")
+    ),
+    locations = cells_column_labels()
+  ) |>
+  tab_options(
+    table.width = pct(100),
+    table.font.size = 13,
+    row.striping.include_table_body = TRUE
+  )
+```
+
+### Model Diagnostics
+
+```{r diagnostics-trace}
+#| fig-cap: "MCMC trace plots for scalar parameters (post-burnin). Stationary, well-mixed traces indicate convergence."
+#| fig-height: 7
+param_labels <- c(
+  post = "Log posterior",
+  like = "Log likelihood",
+  mu = "Mutation rate (μ)",
+  pi = "Reporting rate (π)"
+)
+
+o2 |>
+  mutate(chain = paste("Chain", chain)) |>
+  select(chain, step, all_of(names(param_labels))) |>
+  pivot_longer(-c(chain, step), names_to = "param", values_to = "value") |>
+  mutate(param = factor(param_labels[param], levels = param_labels)) |>
+  ggplot(aes(x = step, y = value, colour = chain)) +
+  geom_line(linewidth = 0.25, alpha = 0.8) +
+  facet_wrap(~param, scales = "free_y", ncol = 1) +
+  scale_colour_brewer(palette = "Set1", name = NULL) +
+  labs(x = "MCMC iteration", y = NULL) +
+  theme_bw(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    strip.background = element_rect(fill = "#f0f0f0"),
+    legend.position = "bottom"
+  )
+```
+
+```{r diagnostics-gelman}
+#| tbl-cap: "Gelman-Rubin convergence diagnostic across 4 independent chains. R-hat < 1.01 indicates good convergence; values ≥ 1.05 suggest insufficient mixing."
+# Split pooled o2 back by chain for Gelman-Rubin
+mcmc_chains <- split(o2, o2$chain) |>
+  lapply(\(df) coda::mcmc(as.matrix(df[names(param_labels)]))) |>
+  coda::mcmc.list()
+
+gd <- coda::gelman.diag(
+  mcmc_chains,
+  confidence = 0.95,
+  transform = FALSE,
+  autoburnin = FALSE,
+  multivariate = FALSE
+)
+
+as.data.frame(gd$psrf) |>
+  setNames(c("R-hat", "97.5% CI")) |>
+  rownames_to_column("param") |>
+  mutate(Parameter = param_labels[param], .keep = "unused") |>
+  relocate(Parameter) |>
+  gt() |>
+  fmt_number(columns = c("R-hat", "97.5% CI"), decimals = 3) |>
+  tab_style(
+    style = cell_fill(color = "#d4edda"),
+    locations = cells_body(rows = `R-hat` < 1.01)
+  ) |>
+  tab_style(
+    style = cell_fill(color = "#fff3cd"),
+    locations = cells_body(rows = `R-hat` >= 1.01 & `R-hat` < 1.05)
+  ) |>
+  tab_style(
+    style = cell_fill(color = "#f8d7da"),
+    locations = cells_body(rows = `R-hat` >= 1.05)
+  ) |>
+  tab_style(
+    style = list(
+      cell_fill(color = "#2c3e50"),
+      cell_text(color = "white", weight = "bold")
+    ),
+    locations = cells_column_labels()
+  ) |>
+  tab_footnote("Green < 1.01 · Yellow 1.01–1.05 · Red ≥ 1.05") |>
+  tab_options(table.width = pct(55), table.font.size = 13)
+```
+
+### Transmission Tree
+
+```{r fig-network-static}
+#| fig-cap: "Consensus transmission tree, where each case is assigned its most frequently inferred ancestor across the posterior sample."
+#| fig-height: 6
+draw_key_arrow <- function(data, params, size) {
+  grid::segmentsGrob(
+    x0 = 0.1,
+    x1 = 0.85,
+    y0 = 0.5,
+    y1 = 0.5,
+    arrow = grid::arrow(length = unit(2, "mm"), type = "closed"),
+    gp = grid::gpar(
+      col = "grey25",
+      fill = "grey25",
+      lwd = (data$edge_width %||% 0.5) * ggplot2::.pt
+    )
+  )
+}
+
+epi <- make_epicontacts(
+  linelist = linelist,
+  contacts = subset(consensus_tree, !is.na(from)),
+  directed = TRUE
+)
+
+g <- epicontacts:::as.igraph.epicontacts(epi) |> as_tbl_graph()
+
+# Reingold-Tilford: designed for rooted trees, guarantees no overlap
+roots <- which(igraph::degree(g, mode = "in") == 0)
+tree_layout <- igraph::layout_as_tree(g, root = roots)
+rownames(tree_layout) <- igraph::V(g)$name
+
+layout_data <- create_layout(g, layout = "kk")
+layout_data$x <- as.numeric(layout_data$symptom_onset)
+layout_data$y <- tree_layout[layout_data$name, 1] # tree breadth → y axis
+
+ggraph(layout_data) +
+  geom_edge_link(
+    aes(
+      edge_width = frequency,
+      color = .N()$group[from],
+      label = sprintf("%.2f", frequency)
+    ),
+    arrow = arrow(length = unit(2.5, "mm")),
+    end_cap = circle(3, "mm"),
+    angle_calc = "along",
+    label_dodge = unit(2.5, "mm"),
+    label_size = 3,
+    label_colour = "black",
+    key_glyph = draw_key_arrow
+  ) +
+  geom_node_point(aes(fill = group), shape = 21, colour = "black", size = 5) +
+  geom_node_text(
+    aes(label = name),
+    repel = TRUE,
+    size = 3,
+    nudge_y = 0.1,
+    bg.color = "white",
+    bg.r = 0.1
+  ) +
+  scale_edge_width(
+    "Posterior support",
+    range = c(0.1, 1),
+    breaks = c(0.8, 0.9, 1)
+  ) +
+  scale_fill_manual(
+    NULL,
+    values = group_pal,
+    breaks = names(group_pal),
+    labels = c(passenger = "Passenger", crew = "Crew")
+  ) +
+  scale_edge_colour_manual(values = group_pal, guide = "none") +
+  guides(
+    fill = guide_legend(override.aes = list(size = 4), order = 1),
+    edge_width = guide_legend(order = 2)
+  ) +
+  scale_x_continuous(breaks = breaks_width(3), labels = \(x) {
+    format(as.Date(x, origin = "1970-01-01"), "%b %d")
+  }) +
+  labs(x = "Symptom onset date", y = "") +
+  theme_bw(base_size = 13) +
+  theme(
+    axis.line.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    legend.position = "bottom"
+  )
+```
+
+### Dates of Infection
+
+```{r infection-dates}
+#| fig-cap: "Posterior distribution of inferred infection dates per case. Width reflects uncertainty; cases ordered by mean inferred infection date."
+#| fig-height: 6
+ref_date <- min(linelist$symptom_onset, na.rm = TRUE)
+
+o2 |>
+  select(starts_with("t_inf")) |>
+  pivot_longer(everything(), names_to = "col", values_to = "t_inf") |>
+  mutate(
+    idx = as.integer(str_extract(col, "\\d+")),
+    case = fct_reorder(linelist$Gh_ID[idx], t_inf, mean, .desc = TRUE),
+    grp = linelist$group[idx],
+    date = ref_date + t_inf
+  ) |>
+  ggplot(aes(x = date, y = case, fill = grp)) +
+  geom_density_ridges(alpha = 0.75, colour = "white", linewidth = 0.4) +
+  scale_fill_manual(
+    values = group_pal,
+    na.value = "grey70",
+    labels = c(passenger = "Passenger", crew = "Crew"),
+    name = NULL
+  ) +
+  scale_x_date(
+    date_breaks = "7 days",
+    date_labels = "%d %b",
+    expand = expansion(add = 3)
+  ) +
+  labs(x = "Inferred date of infection", y = NULL) +
+  theme_bw(base_size = 13) +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  )
+```
+
+### Imports and Unobserved Transmission
+
+```{r import-kappa}
+#| fig-cap: "Posterior probability of each case being imported, directly linked, or connected via unobserved intermediate cases (κ)."
+#| fig-height: 5
+n_cases <- nrow(linelist)
+
+# Stack alpha and kappa column-wise: n_samples × n_cases → long format
+plot_df <- tibble(
+  case = rep(linelist$Gh_ID, each = nrow(o2)),
+  alpha = as.vector(as.matrix(o2[paste0("alpha_", seq_len(n_cases))])),
+  kappa = as.vector(as.matrix(o2[paste0("kappa_", seq_len(n_cases))]))
+) |>
+  mutate(
+    state = case_when(
+      is.na(alpha) ~ "Imported",
+      kappa == 1 ~ "Direct (κ = 1)",
+      kappa == 2 ~ "1 unobserved (κ = 2)",
+      TRUE ~ "2+ unobserved (κ ≥ 3)"
+    ) |>
+      factor(
+        levels = c(
+          "Imported",
+          "Direct (κ = 1)",
+          "1 unobserved (κ = 2)",
+          "2+ unobserved (κ ≥ 3)"
+        )
+      )
+  ) |>
+  count(case, state) |>
+  group_by(case) |>
+  mutate(prob = n / sum(n)) |>
+  ungroup() |>
+  complete(case, state, fill = list(n = 0, prob = 0))
+
+case_order <- linelist |>
+  arrange(desc(symptom_onset)) |>
+  pull(Gh_ID)
+
+plot_df |>
+  mutate(case = factor(case, levels = case_order)) |>
+  ggplot(aes(x = prob, y = case, fill = state)) +
+  geom_col() +
+  scale_x_continuous(
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Imported" = "#e6550d",
+      "Direct (κ = 1)" = "#525252",
+      "1 unobserved (κ = 2)" = "#817f7f",
+      "2+ unobserved (κ ≥ 3)" = "#c4c3c3"
+    ),
+    name = NULL
+  ) +
+  labs(x = "Posterior frequency", y = NULL) +
+  theme_bw(base_size = 13) +
+  theme(legend.position = "bottom", panel.grid.minor = element_blank())
+```
+
+### Ancestry Uncertainty
+
+```{r entropy-plot}
+#| fig-cap: "Shannon entropy of each case's inferred source. Entropy = 0 means a single unambiguous infector."
+#| fig-height: 4
+onset_order <- linelist |> arrange(desc(symptom_onset)) |> pull(Gh_ID)
+
+tibble(
+  case = gsub("alpha_", "", names(entropy_vals)),
+  entropy = entropy_vals
+) |>
+  mutate(case = factor(case, levels = onset_order)) |>
+  ggplot(aes(x = entropy, y = case, fill = entropy)) +
+  geom_col() +
+  scale_fill_gradient(low = "#caced1", high = "#383939", guide = "none") +
+  labs(x = "Shannon entropy", y = "Case ID") +
+  theme_bw(base_size = 13) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+### Reproduction Number
+
+```{r offspring}
+#| fig-cap: "Posterior distribution of the offspring distribution."
+#| fig-height: 4
+get_Ri(o2_id) |>
+  mutate(step = row_number()) |>
+  pivot_longer(-step, names_to = "name", values_to = "Ri") |>
+  group_by(step, Ri) |>
+  summarise(n = n(), .groups = "drop_last") |>
+  mutate(percent = n / sum(n) * 100) |>
+  ungroup() |>
+  group_by(Ri) |>
+  summarise(
+    mean = mean(percent),
+    lower = quantile(percent, 0.025),
+    upper = quantile(percent, 0.975),
+    .groups = "drop"
+  ) |>
+  ggplot(aes(x = Ri, y = mean)) +
+  geom_segment(
+    aes(x = Ri, xend = Ri, y = 0, yend = mean),
+    colour = "grey60",
+    size = 0.5
+  ) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
+  theme_bw()
+```
+
+## Data
+
+Data available under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) at [kraemer-lab/Hondius_hantavirus_h2026](https://github.com/kraemer-lab/Hondius_hantavirus_h2026). Sequences retrieved from [Pathoplexus](https://pathoplexus.org). Report source: `report.qmd`.
