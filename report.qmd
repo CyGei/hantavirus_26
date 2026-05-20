@@ -236,27 +236,29 @@ o2 |>
 ```
 
 ```{r diagnostics-gelman}
-#| tbl-cap: "Gelman-Rubin convergence diagnostic across 4 independent chains. R-hat < 1.01 indicates good convergence; values ≥ 1.05 suggest insufficient mixing."
-# Split pooled o2 back by chain for Gelman-Rubin
+#| tbl-cap: "Convergence diagnostics across 4 independent chains. R-hat < 1.01 and ESS > 400 indicate good convergence and mixing."
+# R-hat and ESS only for actual sampled parameters (not derived log-posterior/likelihood)
+diag_params <- c(mu = "Mutation rate (μ)", pi = "Reporting rate (π)")
+
 mcmc_chains <- split(o2, o2$chain) |>
-  lapply(\(df) coda::mcmc(as.matrix(df[names(param_labels)]))) |>
+  lapply(\(df) coda::mcmc(as.matrix(df[names(diag_params)]))) |>
   coda::mcmc.list()
 
-gd <- coda::gelman.diag(
-  mcmc_chains,
-  confidence = 0.95,
-  transform = FALSE,
-  autoburnin = FALSE,
-  multivariate = FALSE
-)
+gd  <- coda::gelman.diag(mcmc_chains, confidence = 0.95,
+                          transform = FALSE, autoburnin = FALSE,
+                          multivariate = FALSE)
+ess <- coda::effectiveSize(mcmc_chains)
 
 as.data.frame(gd$psrf) |>
   setNames(c("R-hat", "97.5% CI")) |>
   rownames_to_column("param") |>
-  mutate(Parameter = param_labels[param], .keep = "unused") |>
+  mutate(Parameter = diag_params[param],
+         ESS       = round(ess[param]),
+         .keep = "unused") |>
   relocate(Parameter) |>
   gt() |>
   fmt_number(columns = c("R-hat", "97.5% CI"), decimals = 3) |>
+  fmt_integer(columns = ESS) |>
   tab_style(
     style = cell_fill(color = "#d4edda"),
     locations = cells_body(rows = `R-hat` < 1.01)
@@ -276,8 +278,13 @@ as.data.frame(gd$psrf) |>
     ),
     locations = cells_column_labels()
   ) |>
-  tab_footnote("Green < 1.01 · Yellow 1.01–1.05 · Red ≥ 1.05") |>
-  tab_options(table.width = pct(55), table.font.size = 13)
+  tab_footnote(paste0(
+    "R-hat: Green < 1.01 · Yellow 1.01–1.05 · Red ≥ 1.05. ",
+    "ESS: effective sample size out of ", nrow(o2), " total posterior samples ",
+    "(", n_distinct(o2$chain), " chains × ",
+    nrow(o2) / n_distinct(o2$chain), " samples per chain)."
+  )) |>
+  tab_options(table.width = pct(65), table.font.size = 13)
 ```
 
 ### Transmission Tree
