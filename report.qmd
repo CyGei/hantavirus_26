@@ -170,7 +170,8 @@ Andes virus (ANDV) is the only hantavirus documented to transmit person-to-perso
 
 ## Methods
 
-Transmission trees were inferred with **outbreaker2**, integrating symptom onset dates and genome sequences. Serial interval was modelled as Gamma(mean = 18 d, CV = 1/3). MCMC: 100,000 iterations, thinned every 50 steps, 10% burn-in. L-segment sequences were retrieved from [Pathoplexus](https://pathoplexus.org) for the `r length(dna)` of `r nrow(linelist)` cases with deposited accessions. The S and M segments are identical across all cases; the L segment carries the only two SNPs observed in the outbreak and is therefore the sole source of genetic signal. Remaining cases contribute temporal data only. Because near-zero genetic variation renders the per-site mutation rate (μ) non-identifiable from the data, μ was fixed at 1.7 × 10⁻⁵ substitutions/site/generation, derived from the published ANDV substitution rate of ~3.5 × 10⁻⁴ subs/site/year and an 18-day generation interval.
+Transmission trees were inferred with **outbreaker2**, integrating symptom onset dates and genome sequences. Serial interval was modelled as Gamma(mean = 18 d, CV = 1/3). MCMC: 100,000 iterations, thinned every 50 steps, 10% burn-in. L-segment sequences were retrieved from [Pathoplexus](https://pathoplexus.org) for the `r length(dna)` of `r nrow(linelist)` cases with deposited accessions. The S and M segments are identical across all cases; the L segment carries the only two SNPs observed in the outbreak and is therefore the sole source of genetic signal. Remaining cases contribute temporal data only. Because near-zero genetic variation renders the per-site mutation rate ($\mu$) non-identifiable from the data, $\mu$ was fixed at $1.7 \times 10^{-5}$ substitutions/site/generation, derived from the published ANDV substitution rate of ${\sim}3.5 \times 10^{-4}$ subs/site/year and an 18-day generation interval.
+
 
 ## Results
 
@@ -178,43 +179,40 @@ Transmission trees were inferred with **outbreaker2**, integrating symptom onset
 
 ```{r case-table}
 #| tbl-cap: "Confirmed and probable cases."
-linelist |>
+tbl_data <- linelist |>
   transmute(
-    `Case ID` = Gh_ID,
-    Status = str_to_title(status),
-    Role = str_to_title(as.character(group)),
-    `Age (yr)` = as.character(age),
-    Sex = str_to_title(sex),
-    Nationality = str_to_title(nationality),
-    `Onset date` = if_else(
-      !is.na(symptom_onset),
-      format(symptom_onset, "%d %b %Y"),
-      "—"
-    ),
-    Outcome = case_when(
-      outcome == "died" ~ "Fatal",
-      !is.na(outcome) ~ str_to_title(outcome),
-      TRUE ~ "—"
-    ),
-    Sequence = if_else(!is.na(accession_id), str_trim(accession_id), "—")
-  ) |>
-  gt() |>
-  tab_style(
-    style = cell_text(weight = "bold", color = "#c0392b"),
-    locations = cells_body(rows = Outcome == "Fatal", columns = Outcome)
-  ) |>
-  tab_style(
-    style = list(
-      cell_fill(color = "#2c3e50"),
-      cell_text(color = "white", weight = "bold")
-    ),
-    locations = cells_column_labels()
-  ) |>
-  tab_options(
-    table.width = pct(100),
-    table.font.size = 13,
-    row.striping.include_table_body = TRUE
+    `Case ID`    = Gh_ID,
+    Status       = str_to_title(status),
+    Role         = str_to_title(as.character(group)),
+    `Age (yr)`   = as.character(age),
+    Sex          = str_to_title(sex),
+    Nationality  = str_to_title(nationality),
+    `Onset date` = if_else(!is.na(symptom_onset),
+                           format(symptom_onset, "%d %b %Y"), "—"),
+    Outcome      = case_when(
+                     outcome == "died" ~ "Fatal",
+                     !is.na(outcome)   ~ str_to_title(outcome),
+                     TRUE              ~ "—"),
+    Sequence     = if_else(!is.na(accession_id), str_trim(accession_id), "—")
   )
+
+if (knitr::is_latex_output()) {
+  knitr::kable(tbl_data, booktabs = TRUE, linesep = "")
+} else {
+  tbl_data |>
+    gt() |>
+    tab_style(
+      style     = cell_text(weight = "bold", color = "#c0392b"),
+      locations = cells_body(rows = Outcome == "Fatal", columns = Outcome)
+    ) |>
+    tab_style(
+      style     = list(cell_fill(color = "#2c3e50"),
+                       cell_text(color = "white", weight = "bold")),
+      locations = cells_column_labels()
+    ) |>
+    tab_options(table.width = pct(100), table.font.size = 13,
+                row.striping.include_table_body = TRUE)
+}
 ```
 
 ### Genomic Analysis
