@@ -45,6 +45,9 @@ library(o2ools)
 library(httr2)
 library(scales)
 library(ggridges)
+library(phangorn)
+library(pheatmap)
+library(ggtree)
 library(coda)
 library(furrr)
 library(future)
@@ -116,13 +119,20 @@ o2_data <- outbreaker_data(
 config <- create_config(
   n_iter = 1e5,
   sample_every = 50,
-  max_kappa = 5,
+
+  max_kappa = 3,
   move_kappa = TRUE,
-  init_pi = 0.9,
+
+  init_pi = 0.95,
   move_pi = TRUE,
+  prior_pi = c(10, 1),  # Beta(10, 1), concentrated near 1
+
   find_import = TRUE,
   n_iter_import = 1e4,
-  outlier_threshold = 2.5 #default is 5, lower = more aggressive outlier detection
+  outlier_threshold = 2.5, #default is 5, lower = more aggressive outlier detection
+
+  move_mu = FALSE,
+  init_mu  = 1.7e-5    # ANDV: ~3.5e-4 subs/site/year × 18/365 days/generation
 )
 
 # Run 4 independent chains in parallel, each with a distinct seed
@@ -140,8 +150,10 @@ o2_chains <- future_map(
 plan(sequential)
 
 # Pool all chains; .id = "chain" records which chain each row came from
+# Restore outbreaker_chains class so o2ools S3 methods dispatch correctly
 o2 <- bind_rows(o2_chains, .id = "chain")
-o2_id <- identify(o2, ids = linelist$Gh_ID)
+class(o2) <- c("outbreaker_chains", class(o2))
+o2_id <- o2ools::identify(o2, ids = linelist$Gh_ID)
 entropy_vals <- get_entropy(o2_id)
 consensus_tree <- get_consensus(o2_id)
 ```
@@ -154,11 +166,11 @@ consensus_tree <- get_consensus(o2_id)
 
 ## Background
 
-Andes virus (ANDV) is the only hantavirus documented to transmit person-to-person, in addition to the usual rodent-to-human route. The 2026 outbreak is linked to the **MV Hondius** expedition cruise ship. Cases first appeared in early April 2026; by the time infection was confirmed, passengers and crew had dispersed across Europe, Asia, and the Americas. S-segment whole-genome sequencing confirms ANDV as the causative agent.
+Andes virus (ANDV) is the only hantavirus documented to transmit person-to-person, in addition to the usual rodent-to-human route. The 2026 outbreak is linked to the **MV Hondius** expedition cruise ship. Cases first appeared in early April 2026; by the time infection was confirmed, passengers and crew had dispersed across Europe, Asia, and the Americas. Whole-genome sequencing confirms ANDV as the causative agent.
 
 ## Methods
 
-Transmission trees were inferred with **outbreaker2**, integrating symptom onset dates and pairwise S-segment genetic distances. Serial interval was modelled as Gamma(mean = 18 d, CV = 1/3). MCMC: 100,000 iterations, thinned every 50 steps, 10% burn-in. L-segment sequences were retrieved from [Pathoplexus](https://pathoplexus.org) for the `r length(dna)` of `r nrow(linelist)` cases with deposited accessions. The S and M segments are identical across all cases; the L segment carries the only two SNPs observed in the outbreak and is therefore the sole source of genetic signal. Remaining cases contribute temporal data only.
+Transmission trees were inferred with **outbreaker2**, integrating symptom onset dates and genome sequences. Serial interval was modelled as Gamma(mean = 18 d, CV = 1/3). MCMC: 100,000 iterations, thinned every 50 steps, 10% burn-in. L-segment sequences were retrieved from [Pathoplexus](https://pathoplexus.org) for the `r length(dna)` of `r nrow(linelist)` cases with deposited accessions. The S and M segments are identical across all cases; the L segment carries the only two SNPs observed in the outbreak and is therefore the sole source of genetic signal. Remaining cases contribute temporal data only. Because near-zero genetic variation renders the per-site mutation rate (μ) non-identifiable from the data, μ was fixed at 1.7 × 10⁻⁵ substitutions/site/generation, derived from the published ANDV substitution rate of ~3.5 × 10⁻⁴ subs/site/year and an 18-day generation interval.
 
 ## Results
 
@@ -205,6 +217,32 @@ linelist |>
   )
 ```
 
+### Genomic Analysis
+
+```{r snp-matrix}
+#| fig-cap: "Pairwise SNP distance matrix for sequenced cases (L segment). Values are raw nucleotide differences. Near-zero distances confirm a near-clonal cluster consistent with a single spillover event."
+#| fig-height: 3.5
+
+snp_dist <- ape::dist.dna(dna, model = "N", pairwise.deletion = TRUE) |>
+  as.matrix()
+
+pheatmap(
+  snp_dist,
+  color            = colorRampPalette(c("#f7fbff", "#2171b5"))(50),
+  display_numbers  = TRUE,
+  number_format    = "%.0f",
+  number_color     = "black",
+  cluster_rows     = TRUE,
+  cluster_cols     = TRUE,
+  treeheight_row   = 20,
+  treeheight_col   = 20,
+  border_color     = "white",
+  fontsize         = 11,
+  legend           = FALSE,
+  main             = ""
+)
+```
+
 ### Model Diagnostics
 
 ```{r diagnostics-trace}
@@ -212,7 +250,6 @@ linelist |>
 #| fig-height: 7
 param_labels <- c(
   post = "Log posterior",
-  like = "Log likelihood",
   mu = "Mutation rate (μ)",
   pi = "Reporting rate (π)"
 )
@@ -379,6 +416,29 @@ ggraph(layout_data) +
   )
 ```
 
+### Ancestry Uncertainty
+
+```{r entropy-plot}
+#| fig-cap: "Shannon entropy of each case's inferred source. Entropy = 0 means a single unambiguous infector."
+#| fig-height: 4
+onset_order <- linelist |> arrange(desc(symptom_onset)) |> pull(Gh_ID)
+
+tibble(
+  case = gsub("alpha_", "", names(entropy_vals)),
+  entropy = entropy_vals
+) |>
+  mutate(case = factor(case, levels = onset_order)) |>
+  ggplot(aes(x = entropy, y = case, fill = entropy)) +
+  geom_col() +
+  scale_fill_gradient(low = "#caced1", high = "#383939", guide = "none") +
+  labs(x = "Shannon entropy", y = "Case ID") +
+  theme_bw(base_size = 13) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
 ### Dates of Infection
 
 ```{r infection-dates}
@@ -476,29 +536,6 @@ plot_df |>
   labs(x = "Posterior frequency", y = NULL) +
   theme_bw(base_size = 13) +
   theme(legend.position = "bottom", panel.grid.minor = element_blank())
-```
-
-### Ancestry Uncertainty
-
-```{r entropy-plot}
-#| fig-cap: "Shannon entropy of each case's inferred source. Entropy = 0 means a single unambiguous infector."
-#| fig-height: 4
-onset_order <- linelist |> arrange(desc(symptom_onset)) |> pull(Gh_ID)
-
-tibble(
-  case = gsub("alpha_", "", names(entropy_vals)),
-  entropy = entropy_vals
-) |>
-  mutate(case = factor(case, levels = onset_order)) |>
-  ggplot(aes(x = entropy, y = case, fill = entropy)) +
-  geom_col() +
-  scale_fill_gradient(low = "#caced1", high = "#383939", guide = "none") +
-  labs(x = "Shannon entropy", y = "Case ID") +
-  theme_bw(base_size = 13) +
-  theme(
-    panel.grid.major.y = element_blank(),
-    panel.grid.minor = element_blank()
-  )
 ```
 
 ### Reproduction Number
