@@ -26,7 +26,8 @@ execute:
 
 ```{bash}
 #| include: false
-git -C Hondius_hantavirus_h2026 pull
+git -C Hondius_hantavirus_h2026 checkout main
+git -C Hondius_hantavirus_h2026 pull origin main
 ```
 
 ```{r setup}
@@ -272,8 +273,10 @@ o2 |>
 
 ```{r diagnostics-gelman}
 #| tbl-cap: "Convergence diagnostics across 4 independent chains. R-hat < 1.01 and ESS > 400 indicate good convergence and mixing."
-# R-hat and ESS only for actual sampled parameters (not derived log-posterior/likelihood)
-diag_params <- c(mu = "Mutation rate (μ)", pi = "Reporting rate (π)")
+# R-hat and ESS only for actual sampled parameters.
+# mu is fixed (move_mu = FALSE in config), so R-hat/ESS are undefined (0/0 → NaN)
+# and it is intentionally omitted from the table.
+diag_params <- c(pi = "Reporting rate (π)")
 
 mcmc_chains <- split(o2, o2$chain) |>
   lapply(\(df) coda::mcmc(as.matrix(df[names(diag_params)]))) |>
