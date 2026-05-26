@@ -26,8 +26,8 @@ execute:
 
 ```{bash}
 #| include: false
-git -C Hondius_hantavirus_h2026 checkout main
-git -C Hondius_hantavirus_h2026 pull origin main
+# git -C Hondius_hantavirus_h2026 checkout main
+# git -C Hondius_hantavirus_h2026 pull origin main
 ```
 
 ```{r setup}
@@ -227,7 +227,7 @@ snp_dist <- ape::dist.dna(dna, model = "N", pairwise.deletion = TRUE) |>
 
 pheatmap(
   snp_dist,
-  color            = colorRampPalette(c("#f7fbff", "#2171b5"))(50),
+  color            = colorRampPalette(c("#f7fbff", "#21b528"))(50),
   display_numbers  = TRUE,
   number_format    = "%.0f",
   number_color     = "black",
@@ -328,7 +328,7 @@ as.data.frame(gd$psrf) |>
 ### Transmission Tree
 
 ```{r fig-network-static}
-#| fig-cap: "Consensus transmission tree, where each case is assigned its most frequently inferred ancestor across the posterior sample."
+#| fig-cap: "Consensus transmission tree (coloured edges), where each case is assigned its most frequently inferred ancestor across the posterior sample. Grey dashed arrows show the posterior support for direct transmission from case 1 to all cases not already linked to it in the consensus tree, consistent with a superspreading event."
 #| fig-height: 6
 draw_key_arrow <- function(data, params, size) {
   grid::segmentsGrob(
@@ -362,7 +362,30 @@ layout_data <- create_layout(g, layout = "kk")
 layout_data$x <- as.numeric(layout_data$symptom_onset)
 layout_data$y <- tree_layout[layout_data$name, 1] # tree breadth → y axis
 
+# Supporting edges: case "1" → every node not already linked in the consensus tree
+already_linked <- subset(consensus_tree, from == "1" & !is.na(from))$to
+ss_targets <- setdiff(linelist$Gh_ID, c("1", already_linked))
+src <- layout_data[layout_data$name == "1", c("x", "y")]
+ss_segs <- data.frame(
+  x    = src$x, y    = src$y,
+  xend = layout_data$x[match(ss_targets, layout_data$name)],
+  yend = layout_data$y[match(ss_targets, layout_data$name)],
+  freq = sapply(ss_targets, \(t) mean(o2_id[[paste0("alpha_", t)]] == "1", na.rm = TRUE))
+) |> mutate(xmid = (x + xend) / 2, ymid = (y + yend) / 2)
+
 ggraph(layout_data) +
+  geom_segment(
+    data = ss_segs,
+    aes(x = x, y = y, xend = xend, yend = yend),
+    colour = "grey60", linetype = "dashed",
+    arrow = arrow(length = unit(2.5, "mm"), type = "closed"),
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data = ss_segs,
+    aes(x = xmid, y = ymid, label = sprintf("%.2f", freq)),
+    colour = "grey50", size = 3, inherit.aes = FALSE
+  ) +
   geom_edge_link(
     aes(
       edge_width = frequency,
