@@ -26,13 +26,14 @@ execute:
 
 ```{bash}
 #| include: false
-# git -C Hondius_hantavirus_h2026 checkout main
-# git -C Hondius_hantavirus_h2026 pull origin main
+git -C Hondius_hantavirus_h2026 checkout main
+git -C Hondius_hantavirus_h2026 pull origin main
 ```
 
 ```{r setup}
 #| include: false
 library(tidyverse)
+library(janitor)
 library(outbreaker2)
 library(ape)
 library(epitrix)
@@ -52,32 +53,71 @@ library(ggtree)
 library(coda)
 library(furrr)
 library(future)
+library(pipetime)
 
 group_pal <- c(passenger = "#1f77b4", crew = "#d62728")
+group_labels <- c(passenger = "Passenger", crew = "Crew")
 ```
 
 ```{r linelist}
 #| include: false
+date_cols <- c(
+  "date_onset",
+  "date_confirmation",
+  "date_hospitalisation",
+  "date_death",
+  "ship_board_date",
+  "ship_disembark_date"
+)
+
 linelist <- read_csv(
   "Hondius_hantavirus_h2026/data/linelist/2026_hantavirus.csv",
-  col_types = cols(
-    Gh_ID = col_character(),
-    symptom_onset = col_date(),
-    outcome_date = col_date(),
-    ship_boarded = col_date(),
-    left_ship = col_date(),
-    confirmation_date = col_date()
-  )
+  col_types = cols(.default = col_character())
 ) |>
-  filter(status %in% c("confirmed", "probable")) |>
-  arrange(symptom_onset) |>
+  clean_names() |>
+  filter(case_status %in% c("confirmed", "probable")) |>
   mutate(
-    group = case_when(
-      passenger..y.n. == "y" ~ "passenger",
-      cruise.crew..y.n. == "y" ~ "crew"
-    ) |>
-      factor(levels = c("passenger", "crew")),
-    dates = as.integer(symptom_onset - min(symptom_onset, na.rm = TRUE))
+    across(all_of(date_cols), mdy),
+    best_date = pmin(
+      date_onset,
+      date_confirmation,
+      date_hospitalisation,
+      na.rm = TRUE
+    ),
+    dates = as.integer(best_date - min(best_date, na.rm = TRUE)),
+    group = factor(
+      if_else(cruise_passenger_guest == "Y", "passenger", "crew"),
+      levels = c("passenger", "crew")
+    )
+  ) |>
+  select(
+    gh_id,
+    case_status,
+    accession_id,
+    group,
+    dates,
+    best_date,
+    ship_board_date,
+    ship_disembark_date,
+    date_death,
+    contact_gh_id,
+    contact_setting,
+    age,
+    gender
+  ) |>
+  arrange(dates)
+
+ref_date <- min(linelist$best_date, na.rm = TRUE)
+
+ctd_timed <- linelist |>
+  filter(!is.na(ship_board_date)) |>
+  transmute(
+    id = gh_id,
+    place = contact_setting,
+    start = as.integer(ship_board_date - ref_date),
+    end = as.integer(
+      pmin(ship_disembark_date, date_death, na.rm = TRUE) - ref_date
+    )
   )
 ```
 
@@ -100,7 +140,7 @@ request(
   writeBin(fasta)
 
 dna <- read.FASTA(fasta)
-names(dna) <- linelist$Gh_ID[match(names(dna), str_trim(linelist$accession_id))]
+names(dna) <- linelist$gh_id[match(names(dna), str_trim(linelist$accession_id))]
 dna <- dna[!is.na(names(dna))]
 ```
 
@@ -111,50 +151,61 @@ params <- gamma_mucv2shapescale(mu = 18, cv = 6 / 18)
 si <- distcrete("gamma", 1, shape = params$shape, scale = params$scale)$d(1:50)
 
 o2_data <- outbreaker_data(
-  ids = linelist$Gh_ID,
+  ids = linelist$gh_id,
   dates = linelist$dates,
   dna = dna,
-  w_dens = si
+  ctd_timed = ctd_timed,
+  w_dens = si,
+  p_trans = list(matrix(1, 1, 1))
 )
 
 config <- create_config(
   n_iter = 1e5,
   sample_every = 50,
 
+  # unobserved intermediates
   max_kappa = 3,
   move_kappa = TRUE,
 
+  # reporting rate
   init_pi = 0.95,
   move_pi = TRUE,
-  prior_pi = c(10, 1),  # Beta(10, 1), concentrated near 1
+  prior_pi = c(10, 1),
 
+  # contact reporting coverage
+  init_eps = 1,
+  move_eps = FALSE,
+
+  # place persitence
+  init_tau = 1,
+  move_tau = FALSE,
+
+  # importations
   find_import = TRUE,
   n_iter_import = 1e4,
   outlier_threshold = 2.5, #default is 5, lower = more aggressive outlier detection
 
+  # mutation rate
   move_mu = FALSE,
-  init_mu  = 1.7e-5    # ANDV: ~3.5e-4 subs/site/year × 18/365 days/generation
+  init_mu = 1.7e-5 # ANDV: ~3.5e-4 subs/site/year × 18/365 days/generation
 )
 
-# Run 4 independent chains in parallel, each with a distinct seed
+
 plan(multisession, workers = 4)
-
-o2_chains <- future_map(
-  c(123L, 456L, 789L, 1011L),
-  \(s) {
-    set.seed(s)
-    outbreaker(data = o2_data, config = config) |> filter(step > 10000)
-  },
-  .options = furrr_options(seed = NULL)
-)
-
+o2_chains <- c(123L, 456L, 789L, 1011L) |>
+  future_map(
+    \(s) {
+      set.seed(s)
+      outbreaker(data = o2_data, config = config) |> filter(step > 10000)
+    },
+    .options = furrr_options(seed = NULL)
+  ) |>
+  time_pipe("outbreaker2 chains")
 plan(sequential)
 
-# Pool all chains; .id = "chain" records which chain each row came from
-# Restore outbreaker_chains class so o2ools S3 methods dispatch correctly
 o2 <- bind_rows(o2_chains, .id = "chain")
 class(o2) <- c("outbreaker_chains", class(o2))
-o2_id <- o2ools::identify(o2, ids = linelist$Gh_ID)
+o2_id <- o2ools::identify(o2, ids = linelist$gh_id)
 entropy_vals <- get_entropy(o2_id)
 consensus_tree <- get_consensus(o2_id)
 ```
@@ -162,7 +213,7 @@ consensus_tree <- get_consensus(o2_id)
 ::: {.callout-note appearance="minimal"}
 **Outbreak summary** · `r format(Sys.Date(), "%d %B %Y")`
 
-`r nrow(linelist)` cases in analysis (`r sum(linelist$status == "confirmed")` confirmed · `r sum(linelist$status == "probable")` probable) · `r sum(!is.na(linelist$outcome) & linelist$outcome == "died")` deaths · `r format(min(linelist$symptom_onset, na.rm=TRUE), "%d %b")` – `r format(max(linelist$symptom_onset, na.rm=TRUE), "%d %b %Y")`
+`r nrow(linelist)` cases in analysis (`r sum(linelist$case_status == "confirmed")` confirmed · `r sum(linelist$case_status == "probable")` probable) · `r sum(!is.na(linelist$date_death))` deaths · `r format(min(linelist$best_date, na.rm=TRUE), "%d %b")` – `r format(max(linelist$best_date, na.rm=TRUE), "%d %b %Y")`
 :::
 
 ## Background
@@ -171,49 +222,90 @@ Andes virus (ANDV) is the only hantavirus documented to transmit person-to-perso
 
 ## Methods
 
-Transmission trees were inferred with **outbreaker2**, integrating symptom onset dates and genome sequences. Serial interval was modelled as Gamma(mean = 18 d, CV = 1/3). MCMC: 100,000 iterations, thinned every 50 steps, 10% burn-in. L-segment sequences were retrieved from [Pathoplexus](https://pathoplexus.org) for the `r length(dna)` of `r nrow(linelist)` cases with deposited accessions. The S and M segments are identical across all cases; the L segment carries the only two SNPs observed in the outbreak and is therefore the sole source of genetic signal. Remaining cases contribute temporal data only. Because near-zero genetic variation renders the per-site mutation rate ($\mu$) non-identifiable from the data, $\mu$ was fixed at $1.7 \times 10^{-5}$ substitutions/site/generation, derived from the published ANDV substitution rate of ${\sim}3.5 \times 10^{-4}$ subs/site/year and an 18-day generation interval.
+Transmission trees were inferred with **outbreaker2**, integrating symptom onset dates and genome sequences. Serial interval was modelled as Gamma(mean = 18 d, CV = 1/3). MCMC: 100,000 iterations, thinned every 50 steps, 10% burn-in. L-segment sequences were retrieved from [Pathoplexus](https://pathoplexus.org) for the `r length(dna)` of `r nrow(linelist)` cases with deposited accessions. Remaining cases contribute temporal data only. Because near-zero genetic variation renders the per-site mutation rate ($\mu$) non-identifiable from the data, $\mu$ was fixed at $1.7 \times 10^{-5}$ substitutions/site/generation, derived from the published ANDV substitution rate of ${\sim}3.5 \times 10^{-4}$ subs/site/year and an 18-day generation interval.
 
 
 ## Results
 
-### Cases
+### Timeline of Exposure Windows
 
-```{r case-table}
-#| tbl-cap: "Confirmed and probable cases."
-tbl_data <- linelist |>
-  transmute(
-    `Case ID`    = Gh_ID,
-    Status       = str_to_title(status),
-    Role         = str_to_title(as.character(group)),
-    `Age (yr)`   = as.character(age),
-    Sex          = str_to_title(sex),
-    Nationality  = str_to_title(nationality),
-    `Onset date` = if_else(!is.na(symptom_onset),
-                           format(symptom_onset, "%d %b %Y"), "—"),
-    Outcome      = case_when(
-                     outcome == "died" ~ "Fatal",
-                     !is.na(outcome)   ~ str_to_title(outcome),
-                     TRUE              ~ "—"),
-    Sequence     = if_else(!is.na(accession_id), str_trim(accession_id), "—")
+
+```{r ship-timeline}
+#| fig-cap: "Ship exposure windows per case. Bars coloured by role; circle = symptom onset; circle-X = death."
+#| fig-height: 4.5
+ctd_plot <- ctd_timed |>
+  left_join(
+    linelist |> select(gh_id, group, best_date, date_death, age, gender),
+    by = c("id" = "gh_id")
+  ) |>
+  mutate(
+    start_date = ref_date + start,
+    end_date = ref_date + end,
+    sex = str_to_upper(str_sub(gender, 1, 1)),
+    label = fct_reorder(
+      str_glue("{id}  ({sex}, {age})"),
+      coalesce(end_date, start_date)
+    )
   )
 
-if (knitr::is_latex_output()) {
-  knitr::kable(tbl_data, booktabs = TRUE, linesep = "")
-} else {
-  tbl_data |>
-    gt() |>
-    tab_style(
-      style     = cell_text(weight = "bold", color = "#c0392b"),
-      locations = cells_body(rows = Outcome == "Fatal", columns = Outcome)
-    ) |>
-    tab_style(
-      style     = list(cell_fill(color = "#2c3e50"),
-                       cell_text(color = "white", weight = "bold")),
-      locations = cells_column_labels()
-    ) |>
-    tab_options(table.width = pct(100), table.font.size = 13,
-                row.striping.include_table_body = TRUE)
-}
+events <- ctd_plot |>
+  select(label, Onset = best_date, Death = date_death) |>
+  pivot_longer(c(Onset, Death), names_to = "event", values_to = "date") |>
+  drop_na(date)
+
+ggplot(ctd_plot) +
+  geom_segment(
+    aes(
+      y = label,
+      yend = label,
+      x = start_date,
+      xend = end_date,
+      colour = group
+    ),
+    linewidth = 4,
+    alpha = 0.75,
+    lineend = "round"
+  ) +
+  geom_point(
+    data = events,
+    aes(y = label, x = date, colour = event, shape = event),
+    size = 3,
+    fill = "white",
+    stroke = 1.4
+  ) +
+  scale_colour_manual(
+    values = c(group_pal, Onset = "grey20", Death = "#c0392b"),
+    labels = c(group_labels, Onset = "Symptom onset", Death = "Death"),
+    breaks = c("passenger", "crew", "Onset", "Death"),
+    name = NULL
+  ) +
+  scale_shape_manual(
+    values = c(passenger = NA, crew = NA, Onset = 21, Death = 13),
+    guide = "none"
+  ) +
+  scale_x_date(
+    date_breaks = "1 week",
+    date_labels = "%d %b",
+    expand = expansion(add = 3)
+  ) +
+  labs(x = NULL, y = NULL) +
+  theme_bw(base_size = 13) +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  ) +
+  guides(
+    colour = guide_legend(
+      override.aes = list(
+        linewidth = c(3, 3, NA, NA),
+        linetype = c(1, 1, 0, 0),
+        shape = c(NA, NA, 21, 13),
+        size = c(0, 0, 3, 3),
+        fill = c(NA, NA, "white", "white")
+      )
+    )
+  )
 ```
 
 ### Genomic Analysis
@@ -221,24 +313,23 @@ if (knitr::is_latex_output()) {
 ```{r snp-matrix}
 #| fig-cap: "Pairwise SNP distance matrix for sequenced cases (L segment). Values are raw nucleotide differences. Near-zero distances confirm a near-clonal cluster consistent with a single spillover event."
 #| fig-height: 3.5
-
 snp_dist <- ape::dist.dna(dna, model = "N", pairwise.deletion = TRUE) |>
   as.matrix()
 
 pheatmap(
   snp_dist,
-  color            = colorRampPalette(c("#f7fbff", "#21b528"))(50),
-  display_numbers  = TRUE,
-  number_format    = "%.0f",
-  number_color     = "black",
-  cluster_rows     = TRUE,
-  cluster_cols     = TRUE,
-  treeheight_row   = 20,
-  treeheight_col   = 20,
-  border_color     = "white",
-  fontsize         = 11,
-  legend           = FALSE,
-  main             = ""
+  color = colorRampPalette(c("#f7fbff", "#21b528"))(50),
+  display_numbers = TRUE,
+  number_format = "%.0f",
+  number_color = "black",
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  treeheight_row = 20,
+  treeheight_col = 20,
+  border_color = "white",
+  fontsize = 11,
+  legend = FALSE,
+  main = ""
 )
 ```
 
@@ -250,7 +341,8 @@ pheatmap(
 param_labels <- c(
   post = "Log posterior",
   mu = "Mutation rate (μ)",
-  pi = "Reporting rate (π)"
+  pi = "Reporting rate (π)",
+  eps = "Contact reporting coverage (ε)"
 )
 
 o2 |>
@@ -272,55 +364,60 @@ o2 |>
 ```
 
 ```{r diagnostics-gelman}
-#| tbl-cap: "Convergence diagnostics across 4 independent chains. R-hat < 1.01 and ESS > 400 indicate good convergence and mixing."
-# R-hat and ESS only for actual sampled parameters.
-# mu is fixed (move_mu = FALSE in config), so R-hat/ESS are undefined (0/0 → NaN)
-# and it is intentionally omitted from the table.
-diag_params <- c(pi = "Reporting rate (π)")
+#| tbl-cap: "Convergence diagnostics across 4 independent chains. R-hat < 1.01"
+# Sampled parameters of the outbreaker2 model:
+#   - pi (scalar, move_pi = TRUE)
+#   - t_inf_i (per-case infection times, continuous; move_t_inf defaults to TRUE)
+# Fixed parameters (mu, eps, tau) are omitted.
+diag_cols <- c("pi", stringr::str_subset(names(o2), "^t_inf_\\d+$"))
 
-mcmc_chains <- split(o2, o2$chain) |>
-  lapply(\(df) coda::mcmc(as.matrix(df[names(diag_params)]))) |>
+mcmc_chains <- o2 |>
+  group_split(chain) |>
+  map(\(df) coda::mcmc(as.matrix(df[diag_cols]))) |>
   coda::mcmc.list()
 
-gd  <- coda::gelman.diag(mcmc_chains, confidence = 0.95,
-                          transform = FALSE, autoburnin = FALSE,
-                          multivariate = FALSE)
+gd  <- coda::gelman.diag(mcmc_chains, autoburnin = FALSE, multivariate = FALSE)
 ess <- coda::effectiveSize(mcmc_chains)
 
-as.data.frame(gd$psrf) |>
-  setNames(c("R-hat", "97.5% CI")) |>
-  rownames_to_column("param") |>
-  mutate(Parameter = diag_params[param],
-         ESS       = round(ess[param]),
-         .keep = "unused") |>
-  relocate(Parameter) |>
+n_chains  <- n_distinct(o2$chain)
+n_samples <- nrow(o2)
+
+tibble(
+  param = names(ess),
+  group = if_else(param == "pi", "pi", "t_inf"),
+  rhat  = gd$psrf[, "Point est."],
+  ess   = as.numeric(ess)
+) |>
+  group_by(group) |>
+  summarise(
+    n_params = n(),
+    `R-hat`  = max(rhat),
+    ESS      = round(min(ess)),
+    .groups  = "drop"
+  ) |>
+  arrange(match(group, c("pi", "t_inf"))) |>
+  mutate(
+    Parameter = if_else(
+      group == "pi",
+      "Reporting rate (π)",
+      str_c("Infection times (t_inf, N = ", n_params, ")")
+    )
+  ) |>
+  select(Parameter, `R-hat`, ESS) |>
   gt() |>
-  fmt_number(columns = c("R-hat", "97.5% CI"), decimals = 3) |>
+  fmt_number(columns = `R-hat`, decimals = 3) |>
   fmt_integer(columns = ESS) |>
+  tab_style(cell_fill("#d4edda"), cells_body(rows = `R-hat` < 1.01)) |>
+  tab_style(cell_fill("#fff3cd"), cells_body(rows = `R-hat` >= 1.01 & `R-hat` < 1.05)) |>
+  tab_style(cell_fill("#f8d7da"), cells_body(rows = `R-hat` >= 1.05)) |>
   tab_style(
-    style = cell_fill(color = "#d4edda"),
-    locations = cells_body(rows = `R-hat` < 1.01)
+    list(cell_fill("#2c3e50"), cell_text(color = "white", weight = "bold")),
+    cells_column_labels()
   ) |>
-  tab_style(
-    style = cell_fill(color = "#fff3cd"),
-    locations = cells_body(rows = `R-hat` >= 1.01 & `R-hat` < 1.05)
-  ) |>
-  tab_style(
-    style = cell_fill(color = "#f8d7da"),
-    locations = cells_body(rows = `R-hat` >= 1.05)
-  ) |>
-  tab_style(
-    style = list(
-      cell_fill(color = "#2c3e50"),
-      cell_text(color = "white", weight = "bold")
-    ),
-    locations = cells_column_labels()
-  ) |>
-  tab_footnote(paste0(
-    "R-hat: Green < 1.01 · Yellow 1.01–1.05 · Red ≥ 1.05. ",
-    "ESS: effective sample size out of ", nrow(o2), " total posterior samples ",
-    "(", n_distinct(o2$chain), " chains × ",
-    nrow(o2) / n_distinct(o2$chain), " samples per chain)."
+  tab_footnote(str_glue(
+    "ESS: effective sample size out of {n_samples} total posterior samples ",
+    "({n_chains} chains × {n_samples / n_chains} samples per chain). ",
+    "The t_inf row shows the worst-case (max R-hat, min ESS) across all per-case infection times."
   )) |>
   tab_options(table.width = pct(65), table.font.size = 13)
 ```
@@ -347,7 +444,7 @@ draw_key_arrow <- function(data, params, size) {
 
 epi <- make_epicontacts(
   linelist = linelist,
-  contacts = subset(consensus_tree, !is.na(from)),
+  contacts = consensus_tree |> drop_na(from),
   directed = TRUE
 )
 
@@ -359,32 +456,40 @@ tree_layout <- igraph::layout_as_tree(g, root = roots)
 rownames(tree_layout) <- igraph::V(g)$name
 
 layout_data <- create_layout(g, layout = "kk")
-layout_data$x <- as.numeric(layout_data$symptom_onset)
+layout_data$x <- as.numeric(layout_data$best_date)
 layout_data$y <- tree_layout[layout_data$name, 1] # tree breadth → y axis
 
 # Supporting edges: case "1" → every node not already linked in the consensus tree
-already_linked <- subset(consensus_tree, from == "1" & !is.na(from))$to
-ss_targets <- setdiff(linelist$Gh_ID, c("1", already_linked))
-src <- layout_data[layout_data$name == "1", c("x", "y")]
-ss_segs <- data.frame(
-  x    = src$x, y    = src$y,
+already_linked <- consensus_tree |> filter(from == "1") |> pull(to)
+ss_targets <- setdiff(linelist$gh_id, c("1", already_linked))
+src <- layout_data |> filter(name == "1")
+
+ss_segs <- tibble(
+  x = src$x,
+  y = src$y,
   xend = layout_data$x[match(ss_targets, layout_data$name)],
   yend = layout_data$y[match(ss_targets, layout_data$name)],
-  freq = sapply(ss_targets, \(t) mean(o2_id[[paste0("alpha_", t)]] == "1", na.rm = TRUE))
-) |> mutate(xmid = (x + xend) / 2, ymid = (y + yend) / 2)
+  freq = map_dbl(ss_targets, \(t) {
+    mean(o2_id[[str_c("alpha_", t)]] == "1", na.rm = TRUE)
+  })
+) |>
+  mutate(xmid = (x + xend) / 2, ymid = (y + yend) / 2)
 
 ggraph(layout_data) +
   geom_segment(
     data = ss_segs,
     aes(x = x, y = y, xend = xend, yend = yend),
-    colour = "grey60", linetype = "dashed",
+    colour = "grey60",
+    linetype = "dashed",
     arrow = arrow(length = unit(2.5, "mm"), type = "closed"),
     inherit.aes = FALSE
   ) +
   geom_text(
     data = ss_segs,
     aes(x = xmid, y = ymid, label = sprintf("%.2f", freq)),
-    colour = "grey50", size = 3, inherit.aes = FALSE
+    colour = "grey50",
+    size = 3,
+    inherit.aes = FALSE
   ) +
   geom_edge_link(
     aes(
@@ -418,7 +523,7 @@ ggraph(layout_data) +
     NULL,
     values = group_pal,
     breaks = names(group_pal),
-    labels = c(passenger = "Passenger", crew = "Crew")
+    labels = group_labels
   ) +
   scale_edge_colour_manual(values = group_pal, guide = "none") +
   guides(
@@ -426,9 +531,9 @@ ggraph(layout_data) +
     edge_width = guide_legend(order = 2)
   ) +
   scale_x_continuous(breaks = breaks_width(3), labels = \(x) {
-    format(as.Date(x, origin = "1970-01-01"), "%b %d")
+    format(as.Date(x, origin = "1970-01-01"), "%b\n%d")
   }) +
-  labs(x = "Symptom onset date", y = "") +
+  labs(x = "Date (onset / confirmation / hospitalisation)", y = "") +
   theme_bw(base_size = 13) +
   theme(
     axis.line.y = element_blank(),
@@ -445,7 +550,7 @@ ggraph(layout_data) +
 ```{r entropy-plot}
 #| fig-cap: "Shannon entropy of each case's inferred source. Entropy = 0 means a single unambiguous infector."
 #| fig-height: 4
-onset_order <- linelist |> arrange(desc(symptom_onset)) |> pull(Gh_ID)
+onset_order <- linelist |> arrange(desc(dates)) |> pull(gh_id)
 
 tibble(
   case = gsub("alpha_", "", names(entropy_vals)),
@@ -468,14 +573,17 @@ tibble(
 ```{r infection-dates}
 #| fig-cap: "Posterior distribution of inferred infection dates per case. Width reflects uncertainty; cases ordered by mean inferred infection date."
 #| fig-height: 6
-ref_date <- min(linelist$symptom_onset, na.rm = TRUE)
-
 o2 |>
-  select(starts_with("t_inf")) |>
-  pivot_longer(everything(), names_to = "col", values_to = "t_inf") |>
+  select(starts_with("t_inf_")) |>
+  pivot_longer(
+    everything(),
+    names_to = "idx",
+    names_pattern = "t_inf_(\\d+)",
+    names_transform = list(idx = as.integer),
+    values_to = "t_inf"
+  ) |>
   mutate(
-    idx = as.integer(str_extract(col, "\\d+")),
-    case = fct_reorder(linelist$Gh_ID[idx], t_inf, mean, .desc = TRUE),
+    case = fct_reorder(linelist$gh_id[idx], t_inf, mean, .desc = TRUE),
     grp = linelist$group[idx],
     date = ref_date + t_inf
   ) |>
@@ -484,7 +592,7 @@ o2 |>
   scale_fill_manual(
     values = group_pal,
     na.value = "grey70",
-    labels = c(passenger = "Passenger", crew = "Crew"),
+    labels = group_labels,
     name = NULL
   ) +
   scale_x_date(
@@ -506,57 +614,47 @@ o2 |>
 ```{r import-kappa}
 #| fig-cap: "Posterior probability of each case being imported, directly linked, or connected via unobserved intermediate cases (κ)."
 #| fig-height: 5
-n_cases <- nrow(linelist)
+state_pal <- c(
+  "Imported" = "#e6550d",
+  "Direct (κ = 1)" = "#525252",
+  "1 unobserved (κ = 2)" = "#817f7f",
+  "2+ unobserved (κ ≥ 3)" = "#c4c3c3"
+)
 
-# Stack alpha and kappa column-wise: n_samples × n_cases → long format
-plot_df <- tibble(
-  case = rep(linelist$Gh_ID, each = nrow(o2)),
-  alpha = as.vector(as.matrix(o2[paste0("alpha_", seq_len(n_cases))])),
-  kappa = as.vector(as.matrix(o2[paste0("kappa_", seq_len(n_cases))]))
-) |>
+case_order <- linelist |> arrange(desc(best_date)) |> pull(gh_id)
+
+o2 |>
+  select(matches("^(alpha|kappa)_\\d+$")) |>
+  pivot_longer(
+    everything(),
+    names_to = c(".value", "idx"),
+    names_pattern = "(alpha|kappa)_(\\d+)",
+    names_transform = list(idx = as.integer)
+  ) |>
   mutate(
-    state = case_when(
-      is.na(alpha) ~ "Imported",
-      kappa == 1 ~ "Direct (κ = 1)",
-      kappa == 2 ~ "1 unobserved (κ = 2)",
-      TRUE ~ "2+ unobserved (κ ≥ 3)"
-    ) |>
-      factor(
-        levels = c(
-          "Imported",
-          "Direct (κ = 1)",
-          "1 unobserved (κ = 2)",
-          "2+ unobserved (κ ≥ 3)"
-        )
-      )
+    case = factor(linelist$gh_id[idx], levels = case_order),
+    state = factor(
+      case_when(
+        is.na(alpha) ~ "Imported",
+        kappa == 1 ~ "Direct (κ = 1)",
+        kappa == 2 ~ "1 unobserved (κ = 2)",
+        .default = "2+ unobserved (κ ≥ 3)"
+      ),
+      levels = names(state_pal)
+    )
   ) |>
   count(case, state) |>
   group_by(case) |>
   mutate(prob = n / sum(n)) |>
   ungroup() |>
-  complete(case, state, fill = list(n = 0, prob = 0))
-
-case_order <- linelist |>
-  arrange(desc(symptom_onset)) |>
-  pull(Gh_ID)
-
-plot_df |>
-  mutate(case = factor(case, levels = case_order)) |>
+  complete(case, state, fill = list(n = 0, prob = 0)) |>
   ggplot(aes(x = prob, y = case, fill = state)) +
   geom_col() +
   scale_x_continuous(
     labels = percent_format(accuracy = 1),
     expand = expansion(mult = c(0, 0.02))
   ) +
-  scale_fill_manual(
-    values = c(
-      "Imported" = "#e6550d",
-      "Direct (κ = 1)" = "#525252",
-      "1 unobserved (κ = 2)" = "#817f7f",
-      "2+ unobserved (κ ≥ 3)" = "#c4c3c3"
-    ),
-    name = NULL
-  ) +
+  scale_fill_manual(values = state_pal, name = NULL) +
   labs(x = "Posterior frequency", y = NULL) +
   theme_bw(base_size = 13) +
   theme(legend.position = "bottom", panel.grid.minor = element_blank())
@@ -570,10 +668,9 @@ plot_df |>
 get_Ri(o2_id) |>
   mutate(step = row_number()) |>
   pivot_longer(-step, names_to = "name", values_to = "Ri") |>
-  group_by(step, Ri) |>
-  summarise(n = n(), .groups = "drop_last") |>
+  count(step, Ri) |>
+  group_by(step) |>
   mutate(percent = n / sum(n) * 100) |>
-  ungroup() |>
   group_by(Ri) |>
   summarise(
     mean = mean(percent),
@@ -582,15 +679,19 @@ get_Ri(o2_id) |>
     .groups = "drop"
   ) |>
   ggplot(aes(x = Ri, y = mean)) +
-  geom_segment(
-    aes(x = Ri, xend = Ri, y = 0, yend = mean),
+  geom_linerange(
+    aes(ymin = 0, ymax = mean),
     colour = "grey60",
-    size = 0.5
+    linewidth = 0.5
   ) +
   geom_point(size = 2) +
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
   theme_bw()
 ```
+
+
+## Note
+Cases 23 (WHO Case 12, Dutch crew member) and 24 (WHO Case 13, Spanish national) are inferred as imported by the model. Both lack symptom onset dates — the model falls back to their confirmation dates (22 and 25 May), placing them 49 and 52 days after the index case. At those dates, the serial interval likelihood of linkage to any earlier case is very low. Neither case has a sequenced sample, removing the genetic signal that would otherwise support a specific ancestry. Their ship disembarkation dates are also absent from the linelist, so the shared-location contact window contributes no additional evidence. Combined with the aggressive import threshold (`outlier_threshold = 2.5`), the model consistently assigns `α = NA` to both cases. They may well be secondary cases within the ship chain; the classification would likely change if onset dates or sequences become available.
 
 ## Data
 
