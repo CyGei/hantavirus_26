@@ -26,9 +26,12 @@ execute:
 
 ```{bash}
 #| include: false
+#| eval: false
 git -C Hondius_hantavirus_h2026 checkout main
 git -C Hondius_hantavirus_h2026 pull origin main
 ```
+
+
 
 ```{r setup}
 #| include: false
@@ -42,7 +45,8 @@ library(epicontacts)
 library(visNetwork)
 library(tidygraph)
 library(ggraph)
-library(gt)
+library(knitr)
+library(kableExtra)
 library(o2ools)
 library(httr2)
 library(scales)
@@ -118,7 +122,19 @@ ctd_timed <- linelist |>
     end = as.integer(
       pmin(ship_disembark_date, date_death, na.rm = TRUE) - ref_date
     )
-  )
+  ) |>
+  (\(df) {
+    bind_rows(
+      df,
+      tibble(
+        id = c("23", "24"),
+        place = "SHIP",
+        start = min(df$start),
+        end = max(df$end),
+        imputed = TRUE
+      )
+    )
+  })()
 ```
 
 ```{r sequences}
@@ -154,7 +170,7 @@ o2_data <- outbreaker_data(
   ids = linelist$gh_id,
   dates = linelist$dates,
   dna = dna,
-  ctd_timed = ctd_timed,
+  ctd_timed = ctd_timed |> select(-imputed),
   w_dens = si,
   p_trans = list(matrix(1, 1, 1))
 )
@@ -167,7 +183,7 @@ config <- create_config(
   max_kappa = 3,
   move_kappa = TRUE,
 
-  # reporting rate
+  # case reporting rate
   init_pi = 0.95,
   move_pi = TRUE,
   prior_pi = c(10, 1),
@@ -183,11 +199,10 @@ config <- create_config(
   # importations
   find_import = TRUE,
   n_iter_import = 1e4,
-  outlier_threshold = 2.5, #default is 5, lower = more aggressive outlier detection
 
   # mutation rate
   move_mu = FALSE,
-  init_mu = 1.7e-5 # ANDV: ~3.5e-4 subs/site/year × 18/365 days/generation
+  init_mu = 1.7e-5 # ~3.5e-4 subs/site/year × 18/365 days/generation
 )
 
 
@@ -218,20 +233,22 @@ consensus_tree <- get_consensus(o2_id)
 
 ## Background
 
-Andes virus (ANDV) is the only hantavirus documented to transmit person-to-person, in addition to the usual rodent-to-human route. The 2026 outbreak is linked to the **MV Hondius** expedition cruise ship. Cases first appeared in early April 2026; by the time infection was confirmed, passengers and crew had dispersed across Europe, Asia, and the Americas. Whole-genome sequencing confirms ANDV as the causative agent.
+Andes virus (ANDV) is the only hantavirus documented to transmit person-to-person, in addition to the usual rodent-to-human route ([Alonso et al, 2020](https://pmc.ncbi.nlm.nih.gov/articles/PMC7101103/)). The 2026 outbreak is linked to the **MV Hondius** expedition cruise ship. Cases first appeared in early April 2026. By the time whole-genome sequencing confirmed ANDV as the causative agent, passengers and crew had dispersed across Europe, Asia, and the Americas.
 
 ## Methods
 
-Transmission trees were inferred with **outbreaker2**, integrating symptom onset dates and genome sequences. Serial interval was modelled as Gamma(mean = 18 d, CV = 1/3). MCMC: 100,000 iterations, thinned every 50 steps, 10% burn-in. L-segment sequences were retrieved from [Pathoplexus](https://pathoplexus.org) for the `r length(dna)` of `r nrow(linelist)` cases with deposited accessions. Remaining cases contribute temporal data only. Because near-zero genetic variation renders the per-site mutation rate ($\mu$) non-identifiable from the data, $\mu$ was fixed at $1.7 \times 10^{-5}$ substitutions/site/generation, derived from the published ANDV substitution rate of ${\sim}3.5 \times 10^{-4}$ subs/site/year and an 18-day generation interval.
+**Data.** All cases classified as *confirmed* or *probable* (`r nrow(linelist)` total) were included in the analysis. For each case we used a single reference date, defined as the earliest available of symptom onset, laboratory confirmation, or hospitalisation. L-segment sequences were retrieved from [Pathoplexus](https://pathoplexus.org) for the `r length(dna)` of `r nrow(linelist)` cases with deposited accessions. Cases with a recorded `ship_board_date` contribute a timed-contact entry to the model, representing the ship as a shared exposure setting between boarding and the earliest of disembarkation or death. Cases 23 and 24 lack both `ship_board_date` and `ship_disembark_date` in the linelist; we manually added them to the contact data with an exposure window spanning the full cohort range.
 
+**Model.** Transmission trees were inferred using [`outbreaker2`](https://github.com/reconhub/outbreaker2), a Bayesian inference framework that infers transmission chains from epidemiological, contact, and genetic data ([Jombart et al, 2014](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003457); [Campbell et al, 2018](https://pubmed.ncbi.nlm.nih.gov/30343663/)). We assumed the serial interval as a discretised Gamma distribution with mean 18 days and CV = 1/3 ([UKHSA rapid report, 2026](https://assets.publishing.service.gov.uk/media/6a0af6f8229555d0fe826724/Incubation-infectious-period-transmission-transmission-human-to-human-spread-hantavirus-evidence-review.pdf)). Up to two unobserved intermediate generations were allowed between observed cases (`max_kappa = 3`). The reporting rate $\pi$ was assumed to follow a Beta(10, 1) prior (initial value 0.95), reflecting the expectation that case ascertainment on a closed cruise cohort is high. The contact reporting coverage ($\varepsilon$) and place persistence ($\tau$) were both fixed at 1, reflecting the assumption that recorded ship contacts are complete and that the ship was the sole shared transmission setting during the voyage. Because the L-segment alignment contains near-zero genetic variation (see SNP matrix in Results), the per-site mutation rate $\mu$ is non-identifiable from these data and was fixed at $1.7 \times 10^{-5}$ substitutions/site/generation, derived from the published ANDV substitution rate of ${\sim}3.5 \times 10^{-4}$ subs/site/year ([Ramsden et al, 2008](https://pubmed.ncbi.nlm.nih.gov/18417484/)\) and an 18-day serial interval.
+
+**Inference.** Four MCMC chains were run independently for 100,000 iterations each, thinned every 50 steps; the first 10,000 iterations per chain were discarded as burn-in. Convergence was assessed by Gelman–Rubin $\hat{R}$ and effective sample size across chains (see Diagnostics). Consensus ancestries were taken as each case's modal inferred infector across the pooled posterior; ancestry uncertainty is summarised by the Shannon entropy ([o2ools package](https://cygei.github.io/o2ools/reference/get_entropy.html)).
 
 ## Results
 
 ### Timeline of Exposure Windows
 
-
 ```{r ship-timeline}
-#| fig-cap: "Ship exposure windows per case. Bars coloured by role; circle = symptom onset; circle-X = death."
+#| fig-cap: "Exposure windows per case defined by time spent aboard the MV Hondius. Segments represent the time periods during which each individual was present on the ship, with colours representing role. Circles indicate symptom onset and X represents death. Dotted segments (cases 23 and 24) denote windows imputed to the full cohort exposure range."
 #| fig-height: 4.5
 ctd_plot <- ctd_timed |>
   left_join(
@@ -239,6 +256,7 @@ ctd_plot <- ctd_timed |>
     by = c("id" = "gh_id")
   ) |>
   mutate(
+    imputed = replace_na(imputed, FALSE),
     start_date = ref_date + start,
     end_date = ref_date + end,
     sex = str_to_upper(str_sub(gender, 1, 1)),
@@ -260,22 +278,26 @@ ggplot(ctd_plot) +
       yend = label,
       x = start_date,
       xend = end_date,
-      colour = group
+      colour = group,
+      linetype = imputed
     ),
     linewidth = 4,
     alpha = 0.75,
     lineend = "round"
   ) +
+  scale_linetype_manual(
+    values = c(`FALSE` = "solid", `TRUE` = "12"),
+    guide = "none"
+  ) +
   geom_point(
     data = events,
     aes(y = label, x = date, colour = event, shape = event),
     size = 3,
-    fill = "white",
-    stroke = 1.4
+    fill = "white"
   ) +
   scale_colour_manual(
     values = c(group_pal, Onset = "grey20", Death = "#c0392b"),
-    labels = c(group_labels, Onset = "Symptom onset", Death = "Death"),
+    labels = c(group_labels, Onset = "Symptom or \nconfirmation date", Death = "Death"),
     breaks = c("passenger", "crew", "Onset", "Death"),
     name = NULL
   ) +
@@ -311,7 +333,7 @@ ggplot(ctd_plot) +
 ### Genomic Analysis
 
 ```{r snp-matrix}
-#| fig-cap: "Pairwise SNP distance matrix for sequenced cases (L segment). Values are raw nucleotide differences. Near-zero distances confirm a near-clonal cluster consistent with a single spillover event."
+#| fig-cap: "Pairwise SNP distance matrix for sequenced cases (L segment). Values are raw nucleotide differences."
 #| fig-height: 3.5
 snp_dist <- ape::dist.dna(dna, model = "N", pairwise.deletion = TRUE) |>
   as.matrix()
@@ -340,9 +362,9 @@ pheatmap(
 #| fig-height: 7
 param_labels <- c(
   post = "Log posterior",
-  mu = "Mutation rate (μ)",
-  pi = "Reporting rate (π)",
-  eps = "Contact reporting coverage (ε)"
+  pi = "Case reporting rate (pi)"
+  # mu = "Mutation rate (mu)",
+  # eps = "Contact reporting coverage (eps)"
 )
 
 o2 |>
@@ -376,56 +398,78 @@ mcmc_chains <- o2 |>
   map(\(df) coda::mcmc(as.matrix(df[diag_cols]))) |>
   coda::mcmc.list()
 
-gd  <- coda::gelman.diag(mcmc_chains, autoburnin = FALSE, multivariate = FALSE)
+gd <- coda::gelman.diag(mcmc_chains, autoburnin = FALSE, multivariate = FALSE)
 ess <- coda::effectiveSize(mcmc_chains)
 
-n_chains  <- n_distinct(o2$chain)
+n_chains <- n_distinct(o2$chain)
 n_samples <- nrow(o2)
 
-tibble(
+diag_tbl <- tibble(
   param = names(ess),
   group = if_else(param == "pi", "pi", "t_inf"),
-  rhat  = gd$psrf[, "Point est."],
-  ess   = as.numeric(ess)
+  rhat = gd$psrf[, "Point est."],
+  ess = as.numeric(ess)
 ) |>
   group_by(group) |>
   summarise(
     n_params = n(),
-    `R-hat`  = max(rhat),
-    ESS      = round(min(ess)),
-    .groups  = "drop"
+    `R-hat` = max(rhat),
+    ESS = round(min(ess)),
+    .groups = "drop"
   ) |>
   arrange(match(group, c("pi", "t_inf"))) |>
   mutate(
     Parameter = if_else(
       group == "pi",
-      "Reporting rate (π)",
+      "Case reporting rate (pi)",
       str_c("Infection times (t_inf, N = ", n_params, ")")
-    )
+    ),
+    `R-hat` = sprintf("%.3f", `R-hat`),
+    ESS = format(ESS, big.mark = ",")
   ) |>
-  select(Parameter, `R-hat`, ESS) |>
-  gt() |>
-  fmt_number(columns = `R-hat`, decimals = 3) |>
-  fmt_integer(columns = ESS) |>
-  tab_style(cell_fill("#d4edda"), cells_body(rows = `R-hat` < 1.01)) |>
-  tab_style(cell_fill("#fff3cd"), cells_body(rows = `R-hat` >= 1.01 & `R-hat` < 1.05)) |>
-  tab_style(cell_fill("#f8d7da"), cells_body(rows = `R-hat` >= 1.05)) |>
-  tab_style(
-    list(cell_fill("#2c3e50"), cell_text(color = "white", weight = "bold")),
-    cells_column_labels()
+  select(Parameter, `R-hat`, ESS)
+
+row_colors <- case_when(
+  as.numeric(diag_tbl$`R-hat`) < 1.01 ~ "#d4edda",
+  as.numeric(diag_tbl$`R-hat`) < 1.05 ~ "#fff3cd",
+  TRUE ~ "#f8d7da"
+)
+
+kbl <- kable(
+  diag_tbl,
+  align = "lrr",
+  booktabs = TRUE,
+  escape = FALSE
+) |>
+  kable_styling(
+    full_width = FALSE,
+    latex_options = c("hold_position"),
+    bootstrap_options = c("striped", "condensed")
   ) |>
-  tab_footnote(str_glue(
-    "ESS: effective sample size out of {n_samples} total posterior samples ",
-    "({n_chains} chains × {n_samples / n_chains} samples per chain). ",
-    "The t_inf row shows the worst-case (max R-hat, min ESS) across all per-case infection times."
-  )) |>
-  tab_options(table.width = pct(65), table.font.size = 13)
+  row_spec(0, background = "#2c3e50", color = "white", bold = TRUE)
+
+kbl <- reduce(
+  seq_len(nrow(diag_tbl)),
+  \(tbl, i) row_spec(tbl, i, background = row_colors[i]),
+  .init = kbl
+)
+
+kbl |>
+  footnote(
+    general = str_glue(
+      "ESS: effective sample size out of {n_samples} total posterior samples ",
+      "({n_chains} chains of {n_samples / n_chains} samples each). ",
+      "The t_inf row shows the worst-case (max R-hat, min ESS) across all per-case infection times."
+    ),
+    general_title = "",
+    footnote_as_chunk = TRUE
+  )
 ```
 
 ### Transmission Tree
 
 ```{r fig-network-static}
-#| fig-cap: "Consensus transmission tree (coloured edges), where each case is assigned its most frequently inferred ancestor across the posterior sample. Grey dashed arrows show the posterior support for direct transmission from case 1 to all cases not already linked to it in the consensus tree, consistent with a superspreading event."
+#| fig-cap: "Consensus transmission tree (coloured edges), where each case is assigned its most frequently inferred ancestor across the posterior sample."
 #| fig-height: 6
 draw_key_arrow <- function(data, params, size) {
   grid::segmentsGrob(
@@ -459,38 +503,7 @@ layout_data <- create_layout(g, layout = "kk")
 layout_data$x <- as.numeric(layout_data$best_date)
 layout_data$y <- tree_layout[layout_data$name, 1] # tree breadth → y axis
 
-# Supporting edges: case "1" → every node not already linked in the consensus tree
-already_linked <- consensus_tree |> filter(from == "1") |> pull(to)
-ss_targets <- setdiff(linelist$gh_id, c("1", already_linked))
-src <- layout_data |> filter(name == "1")
-
-ss_segs <- tibble(
-  x = src$x,
-  y = src$y,
-  xend = layout_data$x[match(ss_targets, layout_data$name)],
-  yend = layout_data$y[match(ss_targets, layout_data$name)],
-  freq = map_dbl(ss_targets, \(t) {
-    mean(o2_id[[str_c("alpha_", t)]] == "1", na.rm = TRUE)
-  })
-) |>
-  mutate(xmid = (x + xend) / 2, ymid = (y + yend) / 2)
-
 ggraph(layout_data) +
-  geom_segment(
-    data = ss_segs,
-    aes(x = x, y = y, xend = xend, yend = yend),
-    colour = "grey60",
-    linetype = "dashed",
-    arrow = arrow(length = unit(2.5, "mm"), type = "closed"),
-    inherit.aes = FALSE
-  ) +
-  geom_text(
-    data = ss_segs,
-    aes(x = xmid, y = ymid, label = sprintf("%.2f", freq)),
-    colour = "grey50",
-    size = 3,
-    inherit.aes = FALSE
-  ) +
   geom_edge_link(
     aes(
       edge_width = frequency,
@@ -505,19 +518,17 @@ ggraph(layout_data) +
     label_colour = "black",
     key_glyph = draw_key_arrow
   ) +
-  geom_node_point(aes(fill = group), shape = 21, colour = "black", size = 5) +
+  geom_node_point(aes(fill = group), shape = 21, colour = "black", size = 8) +
   geom_node_text(
     aes(label = name),
-    repel = TRUE,
-    size = 3,
-    nudge_y = 0.1,
-    bg.color = "white",
-    bg.r = 0.1
+    size = 2.8,
+    colour = "white",
+    fontface = "bold"
   ) +
   scale_edge_width(
     "Posterior support",
     range = c(0.1, 1),
-    breaks = c(0.8, 0.9, 1)
+    breaks = 1
   ) +
   scale_fill_manual(
     NULL,
@@ -528,12 +539,15 @@ ggraph(layout_data) +
   scale_edge_colour_manual(values = group_pal, guide = "none") +
   guides(
     fill = guide_legend(override.aes = list(size = 4), order = 1),
-    edge_width = guide_legend(order = 2)
+    edge_width = guide_legend(order = 2),
+    colour = "none",
+    edge_colour = "none",
+    edge_alpha = "none"
   ) +
   scale_x_continuous(breaks = breaks_width(3), labels = \(x) {
     format(as.Date(x, origin = "1970-01-01"), "%b\n%d")
   }) +
-  labs(x = "Date (onset / confirmation / hospitalisation)", y = "") +
+  labs(x = "Date (onset / confirmation)", y = "") +
   theme_bw(base_size = 13) +
   theme(
     axis.line.y = element_blank(),
@@ -547,6 +561,59 @@ ggraph(layout_data) +
 
 ### Ancestry Uncertainty
 
+```{r alpha-matrix}
+#| fig-cap: "Ancestry support matrix: for each case (x-axis), the tile shading shows how often each potential infector (y-axis) was sampled across the posterior. Red outlines mark the consensus-tree ancestor (modal infector). 'Import' aggregates samples where the case was assigned no ancestor."
+#| fig-height: 6
+case_order <- linelist |> arrange(best_date) |> pull(gh_id)
+from_levels <- c("Import", case_order)
+
+alpha_post <- o2_id |>
+  select(starts_with("alpha_")) |>
+  pivot_longer(
+    everything(),
+    names_to = "to",
+    values_to = "from",
+    names_prefix = "alpha_"
+  ) |>
+  mutate(from = if_else(is.na(from), "Import", as.character(from))) |>
+  count(to, from) |>
+  group_by(to) |>
+  mutate(prob = n / sum(n)) |>
+  ungroup() |>
+  complete(to = case_order, from = from_levels, fill = list(prob = 0)) |>
+  mutate(
+    to = factor(to, levels = case_order),
+    from = factor(from, levels = from_levels)
+  )
+
+consensus_marks <- consensus_tree |>
+  mutate(
+    from = if_else(is.na(from), "Import", as.character(from)),
+    to = factor(to, levels = case_order),
+    from = factor(from, levels = from_levels)
+  )
+
+ggplot(alpha_post, aes(x = to, y = from)) +
+  geom_tile(aes(fill = prob), colour = "grey90", linewidth = 0.2) +
+  geom_tile(
+    data = consensus_marks,
+    fill = NA, colour = "#c0392b", linewidth = 0.7
+  ) +
+  scale_fill_gradient(
+    "Posterior probability\n",
+    low = "white", high = "#202121",
+    limits = c(0, 1)
+  ) +
+  labs(x = "infectee", y = "infector") +
+  coord_fixed() +
+  theme_bw(base_size = 12) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+```
+
+
 ```{r entropy-plot}
 #| fig-cap: "Shannon entropy of each case's inferred source. Entropy = 0 means a single unambiguous infector."
 #| fig-height: 4
@@ -559,6 +626,7 @@ tibble(
   mutate(case = factor(case, levels = onset_order)) |>
   ggplot(aes(x = entropy, y = case, fill = entropy)) +
   geom_col() +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.05))) +
   scale_fill_gradient(low = "#caced1", high = "#383939", guide = "none") +
   labs(x = "Shannon entropy", y = "Case ID") +
   theme_bw(base_size = 13) +
@@ -616,9 +684,9 @@ o2 |>
 #| fig-height: 5
 state_pal <- c(
   "Imported" = "#e6550d",
-  "Direct (κ = 1)" = "#525252",
-  "1 unobserved (κ = 2)" = "#817f7f",
-  "2+ unobserved (κ ≥ 3)" = "#c4c3c3"
+  "Direct\n(kappa = 1)" = "#525252",
+  "1 unobserved\n(kappa = 2)" = "#817f7f",
+  "2 unobserved\n(kappa = 3)" = "#c4c3c3"
 )
 
 case_order <- linelist |> arrange(desc(best_date)) |> pull(gh_id)
@@ -636,9 +704,9 @@ o2 |>
     state = factor(
       case_when(
         is.na(alpha) ~ "Imported",
-        kappa == 1 ~ "Direct (κ = 1)",
-        kappa == 2 ~ "1 unobserved (κ = 2)",
-        .default = "2+ unobserved (κ ≥ 3)"
+        kappa == 1 ~ "Direct\n(kappa = 1)",
+        kappa == 2 ~ "1 unobserved\n(kappa = 2)",
+        .default = "2 unobserved\n(kappa = 3)"
       ),
       levels = names(state_pal)
     )
@@ -660,10 +728,10 @@ o2 |>
   theme(legend.position = "bottom", panel.grid.minor = element_blank())
 ```
 
-### Reproduction Number
+### Offspring Distribution
 
 ```{r offspring}
-#| fig-cap: "Posterior distribution of the offspring distribution."
+#| fig-cap: "Posterior distribution of the offspring distribution, representing the distribution of secondary infections caused by an infected individual."
 #| fig-height: 4
 get_Ri(o2_id) |>
   mutate(step = row_number()) |>
@@ -686,12 +754,20 @@ get_Ri(o2_id) |>
   ) +
   geom_point(size = 2) +
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
-  theme_bw()
+  theme_bw()+
+  labs(x = expression('Number of secondary infections ' ~ R[i]), y = "% of cases (posterior mean") 
 ```
 
+## Discussion
 
-## Note
-Cases 23 (WHO Case 12, Dutch crew member) and 24 (WHO Case 13, Spanish national) are inferred as imported by the model. Both lack symptom onset dates — the model falls back to their confirmation dates (22 and 25 May), placing them 49 and 52 days after the index case. At those dates, the serial interval likelihood of linkage to any earlier case is very low. Neither case has a sequenced sample, removing the genetic signal that would otherwise support a specific ancestry. Their ship disembarkation dates are also absent from the linelist, so the shared-location contact window contributes no additional evidence. Combined with the aggressive import threshold (`outlier_threshold = 2.5`), the model consistently assigns `α = NA` to both cases. They may well be secondary cases within the ship chain; the classification would likely change if onset dates or sequences become available.
+The reconstruction is consistent with a single ANDV introduction onto the MV Hondius, with case 1 acting as a likely superspreader at the start of the voyage. Three of its onward links (cases 2, 3 and 4) are well supported (posterior ≥ 0.85); a further four (5, 7, 8, 12) are plausible but uncertain (0.31–0.54). The later wave, putatively seeded by case 4, sits at much lower support (0.17–0.23 for the edges to 15, 18, 20, 23 and 24) and should be read as suggestive rather than established.
+
+Two factors limit resolution. First, cases 23 and 24 lack symptom-onset and ship-stay dates; using confirmation dates and a full-cohort exposure window almost certainly places them later in the tree than the true infection events. Second, the L-segment alignment carries near-zero genetic variation, so genomic data contribute little signal beyond confirming that the sequenced cases are co-clustered. The combined effect is high ancestry entropy (Fig. 6) for most cases after the initial cluster.
+
+Despite this, the temporal and contact data are enough to support the broad picture: one introduction, one early superspreading event, and at most a small number of subsequent generations.
+
+Updated linelist data, including onset dates and ship boarding and disembarkation dates for cases 23 and 24, would be valuable. Additional sequencing could help to further resolve the remaining ambiguous links.
+
 
 ## Data
 
