@@ -14,6 +14,9 @@ Hondius_hantavirus_h2026/data/sequences/matched_andv_s_alignment.fasta
 # macOS
 .DS_Store
 
+# Local interactive scratch (run_local.R model cache)
+_local_cache/
+
 # R session
 .Rhistory
 .RData
