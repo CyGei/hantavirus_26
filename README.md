@@ -38,4 +38,3 @@ For interactive development, `source("run_local.R")` runs setup → data → seq
 R packages are attached in `source/setup.R`. The reconstruction relies on the
 development versions of **outbreaker2** (time-resolved contact data: `ctd_timed`,
 `p_trans`, `tau`), **o2ools**, and **mixtree**.
-```
