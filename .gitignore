@@ -6,7 +6,7 @@ report_files/
 
 # Rendered outputs (regenerated on render)
 output/*
-!output/report.pdf
+!output/manuscript.pdf
 
 # Downloaded sequence data (fetched at render time)
 Hondius_hantavirus_h2026/data/sequences/matched_andv_s_alignment.fasta
