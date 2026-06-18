@@ -8,6 +8,7 @@ tibble(
   ggplot(aes(x = entropy, y = case)) +
   geom_col() +
   scale_x_continuous(expand = expansion(mult = c(0, 0.05)), limits = c(0, 1)) +
+  scale_y_discrete(labels = label_sequenced(seq_cases)) +
   labs(x = "Shannon entropy", y = "WHO case ID") +
   theme_bw(base_size = 13) +
   theme(

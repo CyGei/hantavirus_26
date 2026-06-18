@@ -1,19 +1,12 @@
-# =============================================================================
-# Per-sequence quality summary for the sequenced ANDV L-segment genomes
-# =============================================================================
-# Reported *before* the SNP-distance calculation so the reader can judge how
-# much of each genome was confidently called. Consensus bases below the
-# sequencing-depth threshold are reported as N (ambiguous); "completeness" is
-# the fraction of aligned positions called A/C/G/T, and the "called span" gives
-# the first-to-last called position, exposing ragged low-coverage ends.
-# -----------------------------------------------------------------------------
+# Per-sequence quality summary for the sequenced ANDV L-segment genomes.
+# Reported before the SNP matrix so the reader can judge how much of each genome
+# was confidently called. Completeness = fraction of aligned positions called
+# A/C/G/T; "called span" = first-to-last called position (exposes ragged ends).
 
-# Aligned sequences -> uppercase character matrix (rows = samples, cols = sites)
-aln <- as.character(as.matrix(dna))
-aln[] <- toupper(aln)
+aln <- alignment_matrix(dna) # rows = samples, cols = sites
 bases <- c("A", "C", "G", "T")
 
-seq_summary <- map_dfr(rownames(aln), function(id) {
+seq_summary <- map(rownames(aln), \(id) {
   s <- aln[id, ]
   called_pos <- which(s %in% bases)
   tibble(
@@ -25,7 +18,8 @@ seq_summary <- map_dfr(rownames(aln), function(id) {
     span_lo = if (length(called_pos)) min(called_pos) else NA_integer_,
     span_hi = if (length(called_pos)) max(called_pos) else NA_integer_
   )
-})
+}) |>
+  list_rbind()
 
 seq_tbl <- seq_summary |>
   left_join(distinct(linelist, who_id, accession_id), by = "who_id") |>

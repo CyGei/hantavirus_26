@@ -13,7 +13,7 @@ o2 |>
     date = ref_date + t_inf
   ) |>
   ggplot(aes(x = date, y = case, fill = grp)) +
-  geom_density_ridges(alpha = 0.75, colour = "white", linewidth = 0.4) +
+  geom_density_ridges(alpha = 0.75, linewidth = 0) +
   scale_fill_manual(
     values = group_pal,
     na.value = "grey70",
@@ -25,6 +25,7 @@ o2 |>
     date_labels = "%d %b",
     expand = expansion(add = 3)
   ) +
+  scale_y_discrete(labels = label_sequenced(seq_cases)) +
   labs(x = "Inferred date of infection", y = NULL) +
   theme_bw(base_size = 13) +
   theme(

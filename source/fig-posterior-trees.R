@@ -45,26 +45,10 @@ edges <- samples_long |>
   summarise(from = first(alpha), kappa = modal(kappa), .groups = "drop") |>
   left_join(tree_rank, by = c(".sig" = "sig"))
 
-# One panel in the Figure 2 style: nodes placed by symptom-onset date (x) and
-# tree breadth (y), coloured by role; edges coloured by infector role and
-# labelled with kappa.
+# One panel in the consensus-tree style: nodes by onset date (x) and tree
+# breadth (y) via the shared tree_layout(); edges coloured by infector role.
 plot_one_tree <- function(edges_df, panel_title) {
-  epi <- make_epicontacts(
-    linelist = linelist,
-    contacts = edges_df |> select(from, to, kappa),
-    id = "who_id",
-    directed = TRUE
-  )
-
-  g <- epicontacts:::as.igraph.epicontacts(epi) |> as_tbl_graph()
-
-  roots <- which(igraph::degree(g, mode = "in") == 0)
-  tree_layout <- igraph::layout_as_tree(g, root = roots)
-  rownames(tree_layout) <- igraph::V(g)$name
-
-  layout_data <- create_layout(g, layout = "kk")
-  layout_data$x <- as.numeric(layout_data$date_onset)
-  layout_data$y <- tree_layout[layout_data$name, 1]
+  layout_data <- tree_layout(edges_df |> select(from, to, kappa), linelist)
 
   ggraph(layout_data) +
     geom_edge_link(
@@ -75,7 +59,7 @@ plot_one_tree <- function(edges_df, panel_title) {
     ) +
     geom_node_point(aes(fill = group), shape = 21, colour = "black", size = 7) +
     geom_node_text(
-      aes(label = name),
+      aes(label = star_sequenced(name, seq_cases)),
       size = 2.6,
       colour = "white",
       fontface = "bold"

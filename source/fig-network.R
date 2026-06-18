@@ -1,35 +1,20 @@
+# Consensus transmission tree: each case at its modal posterior ancestor.
+# Nodes placed by onset date (x) and tree breadth (y) via tree_layout()
+# (R/functions.R); edges labelled with posterior support.
+
+# Custom legend glyph: a small arrow instead of the default edge segment.
 draw_key_arrow <- function(data, params, size) {
   grid::segmentsGrob(
-    x0 = 0.1,
-    x1 = 0.85,
-    y0 = 0.5,
-    y1 = 0.5,
+    x0 = 0.1, x1 = 0.85, y0 = 0.5, y1 = 0.5,
     arrow = grid::arrow(length = unit(2, "mm"), type = "closed"),
     gp = grid::gpar(
-      col = "grey25",
-      fill = "grey25",
+      col = "grey25", fill = "grey25",
       lwd = (data$edge_width %||% 0.5) * ggplot2::.pt
     )
   )
 }
 
-epi <- make_epicontacts(
-  linelist = linelist,
-  contacts = consensus_tree |> drop_na(from),
-  id = "who_id",
-  directed = TRUE
-)
-
-g <- epicontacts:::as.igraph.epicontacts(epi) |> as_tbl_graph()
-
-# Reingold-Tilford: designed for rooted trees, guarantees no overlap
-roots <- which(igraph::degree(g, mode = "in") == 0)
-tree_layout <- igraph::layout_as_tree(g, root = roots)
-rownames(tree_layout) <- igraph::V(g)$name
-
-layout_data <- create_layout(g, layout = "kk")
-layout_data$x <- as.numeric(layout_data$date_onset)
-layout_data$y <- tree_layout[layout_data$name, 1] # tree breadth → y axis
+layout_data <- tree_layout(consensus_tree |> drop_na(from), linelist)
 
 ggraph(layout_data) +
   geom_edge_link(
@@ -48,7 +33,7 @@ ggraph(layout_data) +
   ) +
   geom_node_point(aes(fill = group), shape = 21, colour = "black", size = 8) +
   geom_node_text(
-    aes(label = name),
+    aes(label = star_sequenced(name, seq_cases)),
     size = 2.8,
     colour = "white",
     fontface = "bold"

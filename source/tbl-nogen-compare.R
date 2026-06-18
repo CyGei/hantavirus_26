@@ -1,8 +1,8 @@
-# Per-case comparison of the consensus reconstruction with vs without genetic
+# Per-case comparison of the consensus reconstruction with vs without sequence
 # data. Reuses get_consensus() (infector + support) and get_entropy() (ancestry
 # uncertainty) outputs already produced for both models. Cases marked * carry an
 # L-segment sequence; cases marked † have a different consensus infector when
-# genetic data are dropped.
+# sequence data are dropped.
 
 seq_cases <- names(dna)
 case_order <- linelist |> arrange(date_onset) |> pull(who_id)
@@ -50,5 +50,5 @@ cmp |>
     `Entropy ` = sprintf("%.2f", ent_n)
   ) |>
   kbl(align = "lcccccc", booktabs = TRUE, escape = FALSE) |>
-  add_header_above(c(" " = 1, "With genetics" = 3, "Without genetics" = 3)) |>
+  add_header_above(c(" " = 1, "With sequences" = 3, "Without sequences" = 3)) |>
   kable_styling(latex_options = "hold_position")

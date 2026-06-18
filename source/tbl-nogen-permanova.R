@@ -1,13 +1,7 @@
 # PERMANOVA comparison of the posterior tree distributions with vs without
-# genetic data, reusing the get_trees() -> mixtree::permanova_test() pattern from
-# source/tbl-permanova.R. Here the two groups are the two pooled posterior
-# forests; a significant result indicates the genetic data shifted the
-# distribution of inferred transmission trees.
-
-to_forest <- function(o2_identified) {
-  o2ools::get_trees(o2_identified) |>
-    purrr::map(~ filter(.x, !is.na(from)))
-}
+# sequence data. The two groups are the two pooled posterior forests; a
+# significant result would indicate the sequence data shifted the distribution of
+# inferred transmission trees. Uses to_forest() from R/functions.R.
 
 forest_gen <- to_forest(o2_id)
 forest_nogen <- to_forest(o2_id_nogen)
@@ -16,8 +10,8 @@ forest_nogen <- to_forest(o2_id_nogen)
 # unseeded run gives a p-value that drifts across renders (it sits near 0.05).
 set.seed(123)
 p_val_nogen <- mixtree::permanova_test(
-  with_genetics = sample(forest_gen, 200),
-  without_genetics = sample(forest_nogen, 200)
+  with_sequences = sample(forest_gen, 200),
+  without_sequences = sample(forest_nogen, 200)
 )
 
 p_val_nogen |>

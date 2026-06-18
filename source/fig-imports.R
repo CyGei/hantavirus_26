@@ -39,6 +39,7 @@ o2 |>
     expand = expansion(mult = c(0, 0.02))
   ) +
   scale_fill_manual(values = state_pal, name = NULL) +
+  scale_y_discrete(labels = label_sequenced(seq_cases)) +
   labs(x = "Posterior frequency", y = NULL) +
   theme_bw(base_size = 13) +
   theme(legend.position = "bottom", panel.grid.minor = element_blank())

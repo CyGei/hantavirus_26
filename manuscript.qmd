@@ -22,21 +22,12 @@ affiliations:
 date: today
 date-format: "D MMMM YYYY"
 abstract:
-  Andes virus (ANDV) is the only hantavirus known to transmit between humans, yet
-  the dynamics of such transmission are seldom reconstructed at the level of
-  individual infector–infectee pairs. During April–May 2026, an outbreak of ANDV
-  hantavirus pulmonary syndrome occurred aboard the expedition cruise ship MV
-  Hondius, yielding 11 analysable cases and 3 deaths in a closed cohort that
-  subsequently dispersed across three continents. Using a Bayesian inference
-  framework, we inferred who infected whom by exploring all transmission trees
-  compatible with the reported symptom-onset dates, time-resolved shipboard
-  contact windows, and viral L-segment sequences.
-  The reconstruction supports a single introduction followed by an early
-  superspreading event seeded by the index case, with limited evidence for onward
-  transmission through unobserved intermediates. Near-absent genomic variation
-  constrained the resolution of later chains. These findings show how closed-setting
-  outbreaks can be rapidly reconstructed to inform contact tracing and isolation
-  policy for person-to-person ANDV transmission.
+ Andes virus (ANDV) is the only hantavirus known to transmit between humans. However, documented outbreaks are rare, and the transmission dynamics of person-to-person ANDV spread remain poorly characterised. During April–May 2026, an outbreak of ANDV hantavirus pulmonary syndrome occurred aboard the expedition cruise ship MV Hondius, resulting in 11 analysable cases and 3 deaths in a closed cohort that subsequently dispersed across three continents. This outbreak provided a rare opportunity to investigate person-to-person ANDV transmission in a well-defined setting.
+ 
+ Using a Bayesian inference framework, we inferred who infected whom by exploring all transmission trees compatible with reported symptom onset dates, time-resolved shipboard contact windows, and viral L-segment sequences. The reconstruction supports a single introduction followed by an early superspreading event initiated by the index case, with limited evidence of onward transmission through unobserved intermediates. Near-absent genomic variation limited the resolution of later transmission chains.
+ 
+ These findings provide insights into the transmission dynamics of person-to-person ANDV spread and illustrate how Bayesian outbreak reconstruction can support rapid outbreak investigation and public health response in emerging infectious disease outbreaks.
+
 keywords:
   - Andes virus
   - hantavirus
@@ -102,69 +93,42 @@ execute:
 
 ## Introduction
 
-Andes virus (ANDV) is a zoonotic hantavirus responsible for hantavirus pulmonary syndrome (HPS), a severe disease associated with substantial mortality [@macneil2011]. Unlike other known hantaviruses, ANDV has repeatedly demonstrated the capacity for person-to-person transmission, resulting in household clusters, nosocomial outbreaks, and, in some instances, extensive community transmission events [@martínez2020; @alonso2020]. Given the absence of licensed vaccines or specific antiviral treatments, rapid identification of transmission pathways remains a critical component of outbreak response.
+Andes virus (ANDV) is a zoonotic hantavirus responsible for hantavirus pulmonary syndrome (HPS), a severe disease associated with substantial mortality [@macneil2011]. Unlike other known hantaviruses, person-to-person transmission of ANDV has been documented, resulting in household clusters, nosocomial outbreaks, and, in some instances, extensive community transmission events [@martínez2020; @alonso2020]. However, such outbreaks remain uncommon, and the transmission dynamics of person-to-person ANDV spread remain poorly characterised. Given the absence of licensed vaccines or specific antiviral treatments, rapid identification of transmission pathways remains a critical component of outbreak response.
 
-In April 2026, an outbreak of ANDV was identified among passengers and crew aboard the MV *Hondius*, an expedition cruise vessel operating in South America. The event attracted international media attention because of the unusual setting, the potential for person-to-person transmission in a confined environment, and the multinational composition of the passenger cohort. By the time laboratory investigations confirmed ANDV infection, travellers had disembarked and returned to countries across Europe, North America, Asia, and Oceania. This geographic dispersion substantially complicated traditional case investigation and contact tracing efforts, requiring coordination across various public health agencies.
+In April 2026, an outbreak of ANDV was identified among passengers and crew aboard the MV Hondius, an expedition cruise vessel operating in South America. The event attracted international media attention because of its unusual setting, the potential for person-to-person transmission in a confined environment, and the multinational composition of the passenger cohort. By the time laboratory investigations confirmed ANDV infection, some travellers had disembarked and returned to countries across Europe, North America, Asia, and Oceania. This geographic dispersion substantially complicated traditional case investigation and contact tracing efforts, requiring coordination across multiple public health agencies. At the same time, the outbreak provided a rare opportunity to investigate person-to-person ANDV transmission within a well-defined population and contact setting.
 
-Such situations highlight the need for analytical approaches capable of supporting outbreak investigations when epidemiological information is incomplete and transmission pathways are uncertain. Bayesian outbreak reconstruction methods provide a probabilistic framework for integrating diverse sources of evidence, including symptom onset dates, contact information, and pathogen genomic sequences, to infer likely transmission chains and quantify uncertainty [@jombart2014; @campbell2019; @duault2022]. These approaches can generate actionable insights during rapidly evolving public health emergencies, particularly when conventional investigations are hindered by delays, missing data, or international case dispersion [@duault2022; @geismar2023; @geismar2024].
+Such situations highlight the need for analytical approaches capable of supporting outbreak investigations when epidemiological information is incomplete and transmission pathways are uncertain. Bayesian outbreak reconstruction methods provide a probabilistic framework for integrating diverse sources of evidence, including symptom onset dates, contact information, and pathogen genomic sequences, to infer likely transmission chains and quantify uncertainty [@jombart2014; @campbell2019; @duault2022]. These approaches can generate actionable insights during rapidly evolving public health emergencies, particularly when conventional investigations are hindered by delays and missing data [@duault2022; @geismar2023; @geismar2024].
 
-Here, we apply Bayesian outbreak reconstruction to the MV *Hondius* outbreak, combining epidemiological and genomic data to infer probable transmission chains. Beyond providing insights into the transmission dynamics of ANDV in a unique outbreak setting, this study illustrates the potential role of probabilistic transmission tree reconstruction as a tool for rapid public health decision-making during emerging infectious disease emergencies.
+Here, we apply Bayesian outbreak reconstruction to the MV Hondius outbreak, combining epidemiological and genomic data to infer probable transmission chains. By characterising who infected whom during this rare outbreak of person-to-person ANDV transmission, we provide insights into ANDV transmission dynamics and illustrate the potential role of probabilistic transmission tree reconstruction in supporting rapid public health decision-making during emerging infectious disease emergencies.
 
-## Materials and Methods
+## Materials and methods
 
-## Outbreak setting and data sources
+### Outbreak setting and data sources
 
-We analysed the 2026 outbreak of Andes virus (ANDV) hantavirus pulmonary syndrome associated with the MV \*Hondius\* expedition cruise. Epidemiological data were obtained from the publicly available outbreak repository maintained by Kraemer and colleagues [@kraemer-2026]. The dataset comprised laboratory-confirmed and probable cases identified among passengers and crew members.
+Line-list data were obtained from the publicly released outbreak repository maintained by the Kraemer Lab [@kraemer-2026], comprising laboratory-confirmed and probable cases identified among passengers and crew. The analysis included the `r nrow(linelist)` cases with a recorded symptom-onset date; World Health Organization (WHO) case identifiers 12 and 13 were excluded because only confirmation dates were available. For each included case, the shipboard exposure window began at boarding and ended at the earliest of disembarkation, isolation, or death, defining a time-resolved contact window representing the ship as a shared exposure setting.
 
-The analysis included all reported cases except World Health Organization case identifiers 12 and 13, for whom symptom onset dates were unavailable and only confirmation dates had been reported. For each remaining case, available boarding, disembarkation, isolation, and death dates were used to define exposure windows representing the period during which the individual was present aboard the vessel. Exposure windows began at boarding and ended at the earliest of disembarkation, isolation, or death.
+Viral genomic data were retrieved from Pathoplexus (<https://pathoplexus.org/andv>) [@pathoplexus]. Available ANDV L-segment sequences were matched to cases by deposited accession identifier; sequences were available for `r length(dna)` of the `r nrow(linelist)` analysed cases.
 
-Viral genomic data were retrieved from Pathoplexus (<https://pathoplexus.org/andv>). Available ANDV L-segment sequences were matched to cases in the line list who had a matching pathogen sequence accession identifer. Sequence data were incorporated into the analysis for all cases for which corresponding genomic data were available.
+### Probabilistic outbreak reconstruction
 
-## Probabilistic outbreak reconstruction
+We reconstructed transmission trees using the Bayesian framework outbreaker2 [@jombart2014; @campbell2019], which integrates symptom onset dates, time-resolved shipboard exposure windows, and viral genomic data to estimate who infected whom while accounting for unobserved intermediate infections. The generation-time and incubation-period distributions were assumed equal and modelled as a discretised gamma with mean 22 days and standard deviation 7 days (coefficient of variation 0.32); a systematic evidence review of person-to-person ANDV transmission reported closely similar incubation periods (mean ≈ 21 days) and serial intervals (mean ≈ 22–23 days) [@hantavir]. Up to two unobserved intermediate infections were permitted between any pair of observed cases (max_kappa = 3).
 
-We reconstructed probable transmission chains using the Bayesian outbreak reconstruction framework outbreaker2 [@jombart2014; @campbell2019]. The model integrates symptom onset dates, shipboard exposure windows, and viral genomic data to estimate the probability of transmission between cases while accounting for uncertainty and potentially unobserved infections.
+The case-reporting probability ($\pi$) was assigned a Beta(10, 1) prior with an initial value of 0.95, reflecting the expectation of high case ascertainment within a closed cruise-ship cohort under intensive public health follow-up. Contact-reporting coverage ($\varepsilon$) and place persistence ($\tau$) were fixed at 1, assuming that recorded shipboard contacts captured all relevant transmission opportunities during the voyage and that the vessel was the primary setting for transmission.
 
-The serial interval was modelled as a discretised gamma distribution with a mean of 18 days and a coefficient of variation of 1/3, consistent with current evidence on person-to-person transmission of ANDV [@hantavir]. To accommodate incomplete case detection, up to two unobserved intermediate infections were permitted between any pair of observed cases ( \$\\kappa \\geq 3\$ ).
+Because genomic diversity among the available L-segment sequences was extremely limited (@fig-snp), the per-site mutation rate ($\mu$) could not be estimated reliably from the outbreak data and was therefore fixed at $2.1 \times 10^{-5}$ substitutions/site/generation. This value was derived from the published ANDV substitution rate of approximately $3.5 \times 10^{-4}$ substitutions/site/year [@ramsden2008], scaled to a 22-day generation time.
 
-To allow for incomplete observation of transmission events, up to two unobserved intermediate infections were permitted between any pair of observed cases (max_kappa = 3).
+### Inference and convergence assessment
 
-The reporting probability (π) was assigned a Beta(10,1) prior distribution with an initial value of 0.95, reflecting the expectation of high case ascertainment within a closed cruise-ship cohort receiving intensive public health follow-up. Contact reporting coverage (ε) and place persistence (τ) were fixed at 1, assuming that available shipboard contact information adequately captured transmission opportunities during the voyage and that the vessel represented the primary setting for transmission.
+Four independent Markov chain Monte Carlo (MCMC) chains were run for 100,000 iterations each, retaining every 50th sample. The first 10,000 iterations of each chain were discarded as burn-in. Convergence was assessed using three complementary diagnostics: the Gelman--Rubin statistic ($\hat{R}$), effective sample sizes for scalar parameters, and a PERMANOVA-based comparison of posterior tree distributions implemented in the mixtree package [@geismar2026], which directly assesses convergence in transmission tree space. Posterior samples from all chains were pooled. For each case, the consensus infector was defined as the most frequently sampled ancestor across the posterior distribution, and ancestry uncertainty was quantified using Shannon entropy. Diagnostic results are reported in the Appendix.
 
-Because genomic diversity among available L-segment sequences was extremely limited (Appendix, Figure X), the mutation rate could not be reliably estimated from the outbreak data. The per-site mutation rate (μ) was therefore fixed at 1.7 × 10⁻⁵ substitutions per site per generation, derived from the published ANDV evolutionary rate and scaled to the assumed serial interval [@ramsden2008].
+### Ethics statement
 
-## Inference and convergence assessment
+This study used previously collected, open-source outbreak surveillance data released under a Creative Commons Attribution 4.0 licence [@kraemer-2026]. No identifiable private information was accessed; the analysis therefore constituted secondary analysis of publicly available surveillance data and was not considered human-subjects research.
 
-Four independent Markov chain Monte Carlo chains were run for 100,000 iterations each. Samples were retained every 50 iterations and the first 10,000 iterations of each chain were discarded as burn-in.
-
-Convergence was assessed using multiple complementary approaches. Standard Bayesian diagnostics included the Gelman-Rubin potential scale reduction factor ($\hat{R}$) and effective sample size estimates for scalar parameters. Because the primary inferential target was a posterior distribution of transmission trees, convergence of tree space exploration was additionally assessed using a PERMANOVA-based comparison of posterior tree distributions implemented in the mixtree package [@geismar2025].
-
-Posterior samples from all converged chains were pooled for analysis. For each case, the consensus infector was defined as the most frequently sampled ancestor across the posterior distribution. Uncertainty in ancestry assignment was quantified using Shannon entropy.
-
-## Ethics statement
-
-This study used previously collected, de-identified outbreak surveillance data released under a Creative Commons Attribution 4.0 licence. No identifiable private information was accessed. The analysis therefore constituted secondary analysis of publicly available surveillance data and was not considered human subjects research.
-
-#### Outbreak overview
-
-The analysis included `r nrow(linelist)` laboratory-*confirmed* and *probable* cases of ANDV hantavirus pulmonary syndrome linked to the MV Hondius cruise. World Health Organization (WHO) case identifiers 12 and 13 were excluded because their symptom-onset dates were unavailable and only confirmation dates had been recorded. Each case had a date of symptom onset; cases with a recorded shipboard period (boarding to the earliest of disembarkation, isolation, or death) additionally contributed a time-resolved contact window representing the ship as a shared exposure setting.
-
-#### Data sources
-
-Line-list data were obtained from the publicly released outbreak repository \[hondiusdata\]. L-segment viral sequences were retrieved from Pathoplexus \[pathoplexus\] for `r length(dna)` of the `r nrow(linelist)` cases whose deposited sequence accessions matched the line list. This investigation used previously collected, de-identified outbreak surveillance data released under a CC BY 4.0 license; no identifiable private information was accessed, and the work was therefore exempt from institutional review board review as a non-human-subjects analysis.
-
-#### Transmission model
-
-Transmission trees were inferred using outbreaker2, a Bayesian framework that reconstructs who-infected-whom from epidemiological, contact, and genetic data [@jombart; @campbell2018]. The serial interval was modeled as a discretized gamma distribution with mean 18 days and coefficient of variation 1/3, consistent with the available evidence review for person-to-person hantavirus transmission [@ukhsa26hanta]. Up to two unobserved intermediate generations were permitted between observed cases (max_kappa = 3).
-
-The case-reporting rate (π) was given a Beta(10, 1) prior with an initial value of 0.95, reflecting the expectation of high ascertainment in a closed cruise cohort. Contact-reporting coverage (ε) and place persistence (τ) were fixed at 1, assuming that recorded shipboard contacts were complete and that the ship was the only shared transmission setting during the voyage. Because the L-segment alignment showed near-zero genetic variation (Appendix, @fig-snp), the per-site mutation rate (μ) could not be reliably estimated from the data and was fixed at 1.7 × 10^−5^ substitutions/site/generation, derived from the published ANDV substitution rate of approximately 3.5 × 10^−4^ substitutions/site/year [@ramsden2008] scaled to an 18-day serial interval.
-
-#### Inference and convergence
-
-Four independent Markov chain Monte Carlo (MCMC) chains were each run for 100,000 iterations, retaining every 50th sample; the first 10,000 iterations per chain were discarded as burn-in. Convergence was assessed with three complementary diagnostics: the Gelman–Rubin $\hat{R}$ statistic and effective sample size for scalar parameters, and a PERMANOVA test on the distribution of inferred trees implemented in mixtree [@geismar2025]. Consensus ancestries were defined as the modal inferred infector for each case across the pooled posterior, and ancestry uncertainty was summarized with Shannon entropy. Diagnostics are reported in the Appendix.
 
 ## Results
 
-The outbreak comprised `r nrow(linelist)` analyzable cases with symptom onset between `r format(min(linelist$date_onset, na.rm=TRUE), "%d %b")` and `r format(max(linelist$date_onset, na.rm=TRUE), "%d %b %Y")`, including `r sum(!is.na(linelist$date_death))` deaths. Reconstructed shipboard exposure windows overlapped substantially across cases, consistent with a single shared setting of transmission during the voyage (@fig-timeline).
+The outbreak comprised `r nrow(linelist)` analysable cases with symptom onset between `r format(min(linelist$date_onset, na.rm=TRUE), "%d %b")` and `r format(max(linelist$date_onset, na.rm=TRUE), "%d %b %Y")`, including `r sum(!is.na(linelist$date_death))` deaths. Shipboard exposure windows overlapped substantially across cases, consistent with a single shared setting of transmission during the voyage (@fig-timeline).
 
 ```{r fig-timeline}
 #| fig-cap: "Exposure windows per case defined by time spent aboard the MV Hondius. Segments represent periods of presence on the ship, with colours indicating role. Circles indicate dates of symptom onset, and crosses indicate dates of death."
@@ -172,10 +136,10 @@ The outbreak comprised `r nrow(linelist)` analyzable cases with symptom onset be
 #| file: source/fig-timeline.R
 ```
 
-The consensus transmission tree identifies case 1 as the most probable index case and the source of an early cluster of infections (@fig-network-static). Three secondary infections attributed to case 1 (cases 2, 3, and 4) were strongly supported, with posterior probability ≥0.85, whereas four further candidate secondary infections from case 1 (cases 5, 6, 7, and 8) were plausible but less certain (posterior probability 0.32–0.54). A later putative generation seeded by case 4 (cases 9, 10, and 11) received weak support (posterior probability 0.20–0.23).
+The consensus transmission tree identifies case 1 as the most probable index case and the source of an early cluster of infections (@fig-network-static). Three secondary infections attributed to case 1 (cases 2, 3, and 4) were strongly supported, with posterior support ≥0.85, whereas four further candidate secondary infections from case 1 (cases 5, 6, 7, and 8) were plausible but less certain (posterior support 0.32–0.54). A later putative generation seeded by case 4 (cases 9, 10, and 11) received weak support (posterior support 0.20–0.23).
 
 ```{r fig-network-static}
-#| fig-cap: "Consensus transmission tree, where each case is assigned its most frequently inferred ancestor across the posterior sample. Edge labels give posterior support."
+#| fig-cap: "Consensus transmission tree, where each case is assigned its most frequently inferred ancestor across the posterior sample. Edge labels give posterior support. Cases marked * carry an L-segment sequence."
 #| fig-height: 6
 #| fig-pos: "H"
 #| file: source/fig-network.R
@@ -184,18 +148,18 @@ The consensus transmission tree identifies case 1 as the most probable index cas
 While the consensus tree summarises support edge by edge, no single complete tree dominated the posterior: the four most frequently sampled distinct configurations were near-tied and each accounted for well under 1% of samples, reflecting the diffuse posterior over whole-tree space induced by the limited genomic signal (@fig-posterior-trees).
 
 ```{r fig-posterior-trees}
-#| fig-cap: "The four most frequently sampled distinct transmission trees in the posterior, drawn in the style of the consensus tree (Figure 2). A tree is a distinct who-infected-whom (ancestry) configuration; the panel title gives its posterior support (proportion of posterior samples). Nodes are cases positioned by symptom-onset date and coloured by role; edges point from infector to infectee. Even the most supported complete tree was sampled in well under 1% of iterations, indicating that no single whole-tree reconstruction is well resolved despite the comparatively confident consensus edges."
+#| fig-cap: "The four most frequently sampled distinct transmission trees in the posterior, drawn in the style of the consensus tree (Figure 2). A tree is a distinct who-infected-whom (ancestry) configuration; the panel title gives its posterior support (proportion of posterior samples). Nodes are cases positioned by symptom-onset date and coloured by role; edges point from infector to infectee. Even the most supported complete tree was sampled in well under 1% of iterations, indicating that no single whole-tree reconstruction is well resolved despite the comparatively confident consensus edges. Cases marked * carry an L-segment sequence."
 #| fig-height: 7.5
 #| fig-pos: "H"
 #| file: source/fig-posterior-trees.R
 ```
 
-The candidate infectors of cases 5, 6, and 7 illustrate how the three data streams combine to favour some transmission pairs over others. These three cases shared an identical L-segment haplotype, whereas case 2—the only other early case with an available sequence—differed from them by a single nucleotide polymorphism (@fig-snp). Because the substitution rate was fixed at a low value, fewer than one mutation is expected per transmission generation, so a direct link from case 2 to cases 5–7 would require that substitution to have arisen within a single transmission generation, whereas a source already sharing the cases' identical haplotype would not. The genomic data therefore weighed against case 2 as their direct infector, even though its symptom-onset timing was compatible [@campbell2018]. Cases 3 and 4 were not sequenced and so incurred no comparable genetic penalty. The shipboard contact windows pointed in the same direction: case 2 had disembarked on 24 April and died on 26 April, before cases 5–7 were infected in late April, ending its period of shared exposure, whereas case 4 remained aboard until its death on 2 May and case 3 until disembarkation on 27 April, both overlapping the inferred infection window. The posterior consequently favoured cases 3 and 4 over case 2 as the probable sources of cases 5, 6, and 7 (@fig-ancestry).
+The candidate infectors of cases 5, 6, and 7 illustrate how the three data streams combine to favour some transmission pairs over others. These three cases shared an identical L-segment sequence, whereas case 2 (the only other early case with an available sequence) differed from them by a single nucleotide polymorphism (SNP) (@fig-snp). Because the substitution rate was fixed at a low value, fewer than one mutation is expected per transmission generation, so a direct link from case 2 to cases 5–7 would require that substitution to have arisen within a single transmission generation, whereas a source already sharing the cases' identical sequence would not. The genomic data therefore weighed against case 2 as their direct infector, even though its symptom-onset timing was compatible [@campbell2018]. Cases 3 and 4 were not sequenced and so incurred no comparable penalty from the sequence data. The shipboard contact windows pointed in the same direction: case 2 had disembarked on 24 April and died on 26 April, before cases 5–7 were infected in late April, ending its period of shared exposure, whereas case 4 remained aboard until its death on 2 May and case 3 until disembarkation on 27 April, both overlapping the inferred infection window. The posterior consequently favoured cases 3 and 4 over case 2 as the probable sources of cases 5, 6, and 7 (@fig-ancestry).
 
 Posterior infection dates placed the inferred infection of the index case earliest, with later cases acquiring infection over the following weeks and with uncertainty that widened for cases inferred to lie further down the chain (@fig-infection).
 
 ```{r fig-infection}
-#| fig-cap: "Posterior distribution of inferred infection dates per case. Width reflects uncertainty; cases ordered by mean inferred infection date."
+#| fig-cap: "Posterior distribution of inferred infection dates per case. Width reflects uncertainty; cases ordered by mean inferred infection date. Cases marked * carry an L-segment sequence."
 #| fig-height: 6
 #| file: source/fig-infection.R
 ```
@@ -203,7 +167,7 @@ Posterior infection dates placed the inferred infection of the index case earlie
 Most cases were inferred to be either the introduction or directly linked to an observed infector; the posterior assigned little weight to transmission through one or two unobserved intermediate cases (@fig-imports). The corresponding offspring distribution was right-skewed, with the bulk of cases generating no onward transmission and a small number of cases—chiefly the index case—accounting for most secondary infections, the signature of a superspreading event (@fig-offspring).
 
 ```{r fig-imports}
-#| fig-cap: "Posterior probability of each case being imported, directly linked, or connected via unobserved intermediate cases."
+#| fig-cap: "Posterior probability of each case being imported, directly linked, or connected via unobserved intermediate cases. Cases marked * carry an L-segment sequence."
 #| fig-height: 5
 #| file: source/fig-imports.R
 ```
@@ -216,25 +180,29 @@ Most cases were inferred to be either the introduction or directly linked to an 
 
 ## Discussion
 
-Our reconstruction supports a scenario in which a single introduction of Andes virus onto the MV *Hondius* resulted in limited onward person-to-person transmission, with much of the observed spread attributable to an early superspreading event, resulting in a highly heterogeneous offspring distribution. This pattern is consistent with previous observations from the Epuyén outbreak in Argentina, where a minority of cases were responsible for a substantial proportion of transmission. Together, these findings reinforce the view that person-to-person spread of ANDV is possible but highly variable, with transmission concentrated among a small subset of infected individuals and exposure events.
+Our reconstruction supports a scenario in which a single introduction of Andes virus onto the MV Hondius resulted in limited onward person-to-person transmission, with much of the observed spread attributable to an early superspreading event. The resulting offspring distribution was highly heterogeneous, consistent with observations from the Epuyén outbreak in Argentina, where a minority of cases accounted for a substantial proportion of transmission. Together, these findings suggest that, although person-to-person transmission of ANDV can sustain outbreaks, transmission may be concentrated among a small number of individuals and exposure events.
 
-The MV *Hondius* outbreak also highlights the operational challenges posed by emerging pathogens capable of person-to-person transmission in highly mobile populations. By the time ANDV infection was confirmed, passengers and crew had dispersed across multiple continents, transforming what began as a localised outbreak within a contained environement into an international public health investigation. Under such circumstances, conventional contact tracing becomes logistically demanding and often incomplete, particularly when exposure histories span multiple jurisdictions and information must be assembled rapidly from diverse sources. The outbreak received considerable international attention, yet many key epidemiological questions remained unresolved during the critical early stages of the response.
+The reconstruction also provides insight into the data streams that are most informative for investigating person-to-person transmission of ANDV. Although genomic data were incorporated into the analysis, viral sequences exhibited minimal diversity over the timescale of the outbreak and contributed little information for distinguishing among competing transmission chains. Instead, inference was driven primarily by symptom onset dates and passenger presence records. This highlights a common challenge when investigating slowly evolving pathogens over short outbreak timescales, where genomic data alone may be insufficient to resolve transmission pathways [@campbell2018]. More broadly, it emphasises the continuing importance of collecting high-quality epidemiological data during outbreak investigations.
 
-In this context, our analysis demonstrates the value of probabilistic outbreak reconstruction as a complementary tool for public health decision-making. By integrating symptom onset data, contact patterns, and viral genomic information within a unified Bayesian framework, it was possible to identify rapidly plausible transmission chains and quantify uncertainty despite substantial gaps in the available data. Importantly, the objective of such analyses is not necessarily to determine a single definitive transmission chain, but rather to evaluate the relative support for competing transmission scenarios and thereby inform risk assessment and response activities. As genomic sequencing and epidemiological data become increasingly available in real time, these approaches have the potential to support investigations while outbreaks are still unfolding, rather than solely as retrospective analytical exercises.
+The MV Hondius outbreak also illustrates the challenges posed by emerging pathogens capable of person-to-person transmission in highly mobile populations. By the time ANDV infection was confirmed, passengers and crew had dispersed across multiple continents, transforming a localised outbreak into an international public health investigation. Under such circumstances, conventional contact tracing can be slow, incomplete, and logistically demanding, leaving important epidemiological questions unresolved during the early stages of the response.
 
-Several limitations should be considered when interpreting our findings. Two confirmed cases could not be incorporated into the reconstruction because symptom onset dates were unavailable, reducing the completeness of the inferred transmission tree. In addition, viral genomes exhibited minimal sequence diversity, limiting the ability of genetic data to discriminate among competing transmission pathways. This is an inherent challenge when investigating transmission of slowly evolving pathogens over the short timescale of a single outbreak [@campbell2018]. Consequently, uncertainty remains surrounding several inferred transmission chains, particularly among later-generation cases.
+In this context, probabilistic outbreak reconstruction can provide a valuable complement to traditional epidemiological investigations. By integrating symptom onset data, contact information, and viral genomic data within a Bayesian framework, it is possible to evaluate competing transmission scenarios and quantify uncertainty despite incomplete information. The goal is not necessarily to identify a single definitive transmission chain, but rather to determine which transmission hypotheses are most strongly supported by the available evidence. Such information can support case investigations, prioritise follow-up activities, and improve situational awareness while outbreaks are still unfolding.
 
-Despite these limitations, the investigation illustrates how Bayesian transmission tree reconstruction can provide timely epidemiological insight during complex public health emergencies. Future investigations of suspected person-to-person hantavirus transmission would benefit from rapid collection of symptom onset data, systematic contact information, and timely sequencing, enabling probabilistic reconstruction methods to contribute more effectively to outbreak response and situational awareness.
+
+Several limitations should be considered. Two confirmed cases could not be included because symptom onset dates were unavailable, which may affect the resulting reconstructed transmission chains. In addition, uncertainty remained high, particularly among later-generation cases. Finally, the reconstruction relied on assumptions regarding the serial interval distribution and the completeness of recorded passenger information, both of which may influence inference when data are sparse.
+
+Despite these limitations, this investigation demonstrates how Bayesian transmission tree reconstruction can generate actionable epidemiological insights during complex public health emergencies. Future outbreaks of suspected person-to-person transmission would benefit from rapid collection of symptom onset data, systematic contact information, and timely genomic sequencing. As these data streams become increasingly available in real time, probabilistic outbreak reconstruction may become an important component of outbreak response, helping public health agencies evaluate competing transmission hypotheses and target control measures while investigations remain ongoing.
+
 
 ## Acknowledgments
 
 We thank the Kraemer Lab for releasing the outbreak line list and the Pathoplexus community for curating the viral sequence data used in this analysis.
 
-Data are available under a CC BY 4.0 license [@hondiusdata]; viral sequences were retrieved from Pathoplexus [@pathoplexus]. The fully reproducible analysis source (`manuscript.qmd`) is available at <https://github.com/CyGei/hantavirus_26>.
+Data are available under a CC BY 4.0 license [@kraemer-2026]; viral sequences were retrieved from Pathoplexus [@pathoplexus]. The fully reproducible analysis source (`manuscript.qmd`) is available at <https://github.com/CyGei/hantavirus_26>.
 
-## About the Author
+## Competing interests
 
-Dr. Geismar is a researcher at the Johns Hopkins Bloomberg School of Public Health, Baltimore, Maryland, USA. His work focuses on statistical and computational methods for epidemic forecasting and reconstructing infectious disease transmission from epidemiological and genetic data.
+The authors declare no competing interests.
 
 ## References
 
@@ -280,21 +248,21 @@ SNP distances were evaluated over the `r format(n_core, big.mark = ",")` of `r f
 #| file: source/tbl-permanova.R
 ```
 
-The topology of transmission trees, defined by the arrangement of vertices and edges, encodes key epidemiological characteristics. PERMANOVA compares the distributions of trees between forests (i.e. sets of trees) using pairwise tree distances (here, the patristic distance). A non-significant result (p \> 0.05) indicates no evidence of a difference in the topological distributions of the forests under the chosen distance metric [@geismar2025]. In the context of MCMC diagnostics, this provides evidence that independent chains converged to the same posterior distribution of transmission trees.
+The topology of transmission trees, defined by the arrangement of vertices and edges, encodes key epidemiological characteristics. PERMANOVA compares the distributions of trees between forests (i.e. sets of trees) using pairwise tree distances (here, the patristic distance). A non-significant result (p \> 0.05) indicates no evidence of a difference in the topological distributions of the forests under the chosen distance metric [@geismar2026]. In the context of MCMC diagnostics, this provides evidence that independent chains converged to the same posterior distribution of transmission trees.
 
 ```{r fig-ancestry}
-#| fig-cap: "Appendix Figure. Ancestry support matrix: for each case (x-axis), tile shading shows how often each potential infector (y-axis) was sampled across the posterior. Red outlines mark the consensus-tree ancestor (modal infector). 'Import' aggregates samples where the case was assigned no ancestor."
+#| fig-cap: "Appendix Figure. Ancestry support matrix: for each case (x-axis), tile shading shows how often each potential infector (y-axis) was sampled across the posterior. Red outlines mark the consensus-tree ancestor (modal infector). 'Import' aggregates samples where the case was assigned no ancestor. Cases marked * carry an L-segment sequence."
 #| fig-height: 6
 #| file: source/fig-ancestry.R
 ```
 
 ```{r fig-entropy}
-#| fig-cap: "Appendix Figure. Shannon entropy of each case's inferred source. Entropy = 0 means a single unambiguous infector."
+#| fig-cap: "Appendix Figure. Shannon entropy of each case's inferred source. Entropy = 0 means a single unambiguous infector. Cases marked * carry an L-segment sequence."
 #| fig-height: 4
 #| file: source/fig-entropy.R
 ```
 
-## Sensitivity to genetic data
+## Sensitivity to the genomic data
 
 ```{r analysis-nogen}
 #| cache: true
@@ -307,13 +275,20 @@ The topology of transmission trees, defined by the arrangement of vertices and e
 To quantify how much the viral genomic data contributed to the reconstruction, we refit an otherwise identical model after removing the L-segment alignment, leaving the symptom-onset dates, shipboard contact windows, serial interval, and all other settings unchanged. @tbl-nogen-compare compares the consensus reconstruction under the two models, and @tbl-nogen-permanova tests whether the posterior distribution of transmission trees differed between them.
 
 ```{r tbl-nogen-compare}
-#| tbl-cap: "Appendix Table. Per-case consensus reconstruction with versus without genetic data. For each case the table gives its consensus (modal) infector, the posterior support for that link, and the Shannon entropy of its inferred source. Cases marked * carry an L-segment sequence; cases marked † are assigned a different consensus infector when genetic data are removed."
+#| tbl-cap: "Appendix Table. Per-case consensus reconstruction with versus without sequences. For each case the table gives its consensus (modal) infector, the posterior support for that link, and the Shannon entropy of its inferred source. Cases marked * carry an L-segment sequence; cases marked † are assigned a different consensus infector when sequences are removed."
 #| file: source/tbl-nogen-compare.R
 ```
 
+```{r fig-ancestry-diff}
+#| fig-cap: "Appendix Figure. Change in posterior ancestry support attributable to the sequence data, computed cell-by-cell as the difference between the support matrices with and without the L-segment alignment (the @fig-ancestry construction). For each infectee (x-axis) and potential infector (y-axis), shading gives the posterior support with sequences minus the posterior support without sequences: green cells are infector–infectee pairs the sequence data favour, purple cells those it disfavours, and white cells those it leaves unchanged. Outlines mark each model's consensus (modal) infector, coloured to match the fill (dark green for the model with sequences, dark purple for the model without) — a full-cell box for the model with sequences and an inset box for the model without, so a cell where the two models agree appears as a box-in-box and a disagreement as two separate boxes. This is the matrix-wide complement to the per-case summary in @tbl-nogen-compare. Cases marked * carry an L-segment sequence."
+#| fig-height: 6.5
+#| fig-pos: "H"
+#| file: source/fig-ancestry-diff.R
+```
+
 ```{r tbl-nogen-permanova}
-#| tbl-cap: "Appendix Table. PERMANOVA comparison of the posterior tree distributions inferred with versus without genetic data. A non-significant result (p > 0.05) indicates no detectable difference in the distribution of inferred transmission trees between the two models."
+#| tbl-cap: "Appendix Table. PERMANOVA comparison of the posterior tree distributions inferred with versus without sequences. A non-significant result (p > 0.05) indicates no detectable difference in the distribution of inferred transmission trees between the two models."
 #| file: source/tbl-nogen-permanova.R
 ```
 
-Removing the genetic data left the consensus reconstruction essentially unchanged: the index case and every consensus infector were identical under both models (`r n_changed` of `r nrow(cmp)` cases reassigned), and per-case posterior support shifted only marginally. The genomic data produced a modest reduction in ancestry uncertainty that was concentrated among the `r length(seq_cases)` sequenced cases (mean Shannon entropy `r sprintf("%.2f", mean_ent_seq_gen)` with genetics versus `r sprintf("%.2f", mean_ent_seq_nogen)` without), consistent with the near-absent L-segment diversity limiting the discriminating power of the sequences (@fig-snp). A PERMANOVA comparison of the two posterior forests showed that the presence of genetic data explained a negligible fraction of the variation in tree space (R² = `r sprintf("%.3f", p_val_nogen["Model","R2"])`; F = `r sprintf("%.2f", p_val_nogen["Model","F"])`, p = `r sprintf("%.3f", p_val_nogen["Model","Pr(>F)"])`), confirming that the genomic data did not materially reshape the posterior distribution of transmission trees in this outbreak.
+Removing the genomic data left the consensus transmission tree unchange: the index case and every consensus infector were identical under both models (`r n_changed` of `r nrow(cmp)` cases reassigned), and per-case posterior support shifted only marginally, with the few changes confined to the sequenced cases and their candidate infectors (@fig-ancestry-diff). The genomic data produced a modest reduction in ancestry uncertainty that was concentrated among the `r length(seq_cases)` sequenced cases (mean Shannon entropy `r sprintf("%.2f", mean_ent_seq_gen)` with sequences versus `r sprintf("%.2f", mean_ent_seq_nogen)` without), consistent with the near-absent L-segment diversity limiting the discriminating power of the sequences (@fig-snp). A PERMANOVA comparison of the two posterior forests showed that the presence of the genomic data explained a negligible fraction of the variation in tree space (R² = `r sprintf("%.3f", p_val_nogen["Model","R2"])`; F = `r sprintf("%.2f", p_val_nogen["Model","F"])`, p = `r sprintf("%.3f", p_val_nogen["Model","Pr(>F)"])`), confirming that the genomic data did not materially reshape the posterior distribution of transmission trees in this outbreak.
